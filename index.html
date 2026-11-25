@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Umeda &amp; Berri-UQAM 3D — Unified Scale Spatial Explorer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #060a12; color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      touch-action: none;
+    }
+    #canvas-container {
+      position: fixed; inset: 0; z-index: 1;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    #error-banner {
+      display: none; position: fixed; top: 96px; left: 12px; right: 12px;
+      z-index: 9999; background: #7f1d1d; border: 1px solid #ef4444; color: #fecaca;
+      padding: 12px 14px; border-radius: 10px; font-family: monospace; font-size: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.75);
+    }
+
+    /* Top HUD */
+    #top-bar {
+      position: fixed; top: env(safe-area-inset-top, 10px); left: 10px; right: 10px;
+      z-index: 15; display: flex; justify-content: space-between; align-items: center;
+      background: rgba(10, 16, 28, 0.90); backdrop-filter: blur(12px);
+      border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 12px;
+      padding: 8px 12px; gap: 8px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    }
+    .brand-title { font-size: 13.5px; font-weight: 800; color: #38bdf8; letter-spacing: 0.2px; }
+    .brand-sub { font-size: 10.5px; color: #94a3b8; }
+
+    /* Shared True Scale Bar */
+    .scale-pill {
+      display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;
+    }
+    .scale-text { font-size: 10px; color: #38bdf8; font-weight: 700; margin-bottom: 3px; }
+    .scale-bar {
+      width: 84px; height: 5px; display: flex; border: 1px solid #94a3b8; overflow: hidden;
+    }
+    .scale-seg-1 { width: 20%; background: #38bdf8; }
+    .scale-seg-2 { width: 30%; background: #0f172a; }
+    .scale-seg-3 { width: 50%; background: #38bdf8; }
+    .scale-ticks {
+      width: 92px; display: flex; justify-content: space-between;
+      font-size: 9px; color: #94a3b8; margin-top: 1px;
+    }
+
+    /* Hub Switcher + Camera Bar */
+    #top-controls {
+      position: fixed; top: calc(env(safe-area-inset-top, 10px) + 54px);
+      left: 10px; right: 10px; z-index: 12;
+      display: flex; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    #top-controls::-webkit-scrollbar { display: none; }
+
+    .hub-switch {
+      display: inline-flex; flex-shrink: 0;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      border-radius: 999px; padding: 2px;
+    }
+    .hub-btn {
+      background: transparent; color: #cbd5e1; border: none;
+      border-radius: 999px; padding: 5px 11px; font-size: 11.5px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    .hub-btn.active {
+      background: #0284c7; color: #ffffff;
+    }
+
+    .cam-group { display: inline-flex; gap: 6px; flex-shrink: 0; }
+    .cam-pill {
+      flex-shrink: 0; background: rgba(15, 23, 42, 0.85); color: #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.28); border-radius: 999px;
+      padding: 6px 11px; font-size: 11.5px; font-weight: 600;
+      backdrop-filter: blur(8px); cursor: pointer; white-space: nowrap;
+    }
+    .cam-pill.active { background: #0369a1; border-color: #38bdf8; color: #fff; }
+
+    /* Mobile Bottom Sheet Drawer */
+    #bottom-sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+      background: rgba(10, 16, 28, 0.94);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 18px 18px 0 0;
+      padding: 8px 14px calc(env(safe-area-inset-bottom, 10px) + 10px);
+      box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.65);
+      transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+      max-height: 62vh;
+      display: flex; flex-direction: column;
+    }
+    #bottom-sheet.collapsed {
+      transform: translateY(calc(100% - 88px));
+    }
+
+    .sheet-handle-area {
+      width: 100%; padding: 4px 0 8px; display: flex; flex-direction: column;
+      align-items: center; cursor: pointer; touch-action: pan-y;
+    }
+    .sheet-handle {
+      width: 40px; height: 4px; border-radius: 999px; background: rgba(148, 163, 184, 0.45);
+    }
+
+    .tab-bar {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+      margin-bottom: 10px; flex-shrink: 0;
+    }
+    .tab-btn {
+      background: rgba(30, 41, 59, 0.85); color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 10px;
+      padding: 9px 4px; font-size: 12px; font-weight: 700; text-align: center; cursor: pointer;
+    }
+    .tab-btn.active {
+      background: #0284c7; border-color: #38bdf8; color: #fff;
+    }
+
+    .sheet-body {
+      overflow-y: auto; flex: 1; padding-right: 2px;
+      touch-action: pan-y; -webkit-overflow-scrolling: touch;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .control-row { margin-bottom: 14px; }
+    .control-header {
+      display: flex; justify-content: space-between; font-size: 13px;
+      margin-bottom: 6px; color: #e2e8f0; font-weight: 600;
+    }
+    .control-val { color: #38bdf8; font-weight: 700; font-variant-numeric: tabular-nums; }
+    input[type="range"] {
+      width: 100%; height: 28px; background: transparent; cursor: pointer;
+      accent-color: #38bdf8;
+    }
+
+    .toggle-list { display: flex; flex-direction: column; gap: 8px; }
+    .toggle-item {
+      display: flex; align-items: center; gap: 10px; font-size: 13px;
+      padding: 6px 8px; background: rgba(30, 41, 59, 0.55); border-radius: 8px; cursor: pointer;
+    }
+    .toggle-item input { width: 18px; height: 18px; accent-color: #38bdf8; flex-shrink: 0; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+    .sub-toggles {
+      margin-left: 14px; padding-left: 10px;
+      border-left: 2px solid rgba(56, 189, 248, 0.35);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .sub-toggles .toggle-item { font-size: 12px; padding: 5px 8px; }
+
+    select {
+      width: 100%; background: #0f172a; color: #f8fafc;
+      border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 10px;
+      padding: 10px 10px; font-size: 13.5px; margin-bottom: 8px;
+    }
+
+    .badge {
+      display: inline-block; padding: 3px 8px; border-radius: 999px;
+      font-size: 10.5px; font-weight: 700; margin-bottom: 5px;
+      background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4);
+    }
+    .insp-title { font-size: 16px; font-weight: 800; color: #f8fafc; margin-bottom: 2px; }
+    .insp-sub { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+    .stat-box {
+      background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 8px; padding: 7px 9px;
+    }
+    .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; }
+    .stat-value { font-size: 12px; font-weight: 700; color: #f8fafc; margin-top: 2px; }
+
+    #floor-stack-list {
+      display: flex; flex-direction: column; gap: 4px; margin-top: 8px;
+    }
+    .floor-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 10px; border-radius: 7px; font-size: 12px;
+      background: rgba(30, 41, 59, 0.78); border: 1px solid rgba(148,163,184,0.2); cursor: pointer;
+    }
+    .floor-row.highlighted {
+      background: rgba(56, 189, 248, 0.32); border-color: #38bdf8; color: #fff;
+    }
+    .floor-code { font-weight: 800; color: #38bdf8; min-width: 44px; }
+    .floor-row.sub .floor-code { color: #f59e0b; }
+    .floor-desc { color: #e2e8f0; text-align: right; font-size: 11.5px; }
+
+    #labels-layer {
+      position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden;
+    }
+    .pin-label {
+      position: absolute; transform: translate(-50%, -100%);
+      background: rgba(8, 13, 24, 0.86); color: #f1f5f9;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      padding: 3px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 700;
+      white-space: nowrap; pointer-events: auto; cursor: pointer;
+    }
+    .pin-label.mall { border-left: 3px solid #a855f7; }
+    .pin-label.rail { border-left: 3px solid #38bdf8; }
+    .pin-label.chikagai { border-left: 3px solid #f59e0b; }
+
+    @media (min-width: 768px) {
+      #bottom-sheet {
+        left: 14px; right: auto; bottom: 14px; width: 390px;
+        border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.28);
+        max-height: calc(100vh - 135px);
+      }
+      #bottom-sheet.collapsed { transform: translateY(calc(100% - 76px)); }
+    }
+  </style>
+</head>
+<body>
+  <div id="error-banner"></div>
+  <div id="canvas-container"></div>
+  <div id="labels-layer"></div>
+
+  <!-- Top HUD -->
+  <div id="top-bar">
+    <div>
+      <div id="hub-title" class="brand-title">UMEDA / OSAKA 3D</div>
+      <div id="hub-subtitle" class="brand-sub">Unified 1:10m Scale · Zoom Locked Across Hubs</div>
+    </div>
+    <div class="scale-pill">
+      <div class="scale-text">1 Sq = 50m × 50m</div>
+      <div class="scale-bar">
+        <div class="scale-seg-1"></div>
+        <div class="scale-seg-2"></div>
+        <div class="scale-seg-3"></div>
+      </div>
+      <div class="scale-ticks"><span>0</span><span>100</span><span>250</span><span>500m</span></div>
+    </div>
+  </div>
+
+  <!-- Hub Toggle & Camera Presets -->
+  <div id="top-controls">
+    <div class="hub-switch" role="group" aria-label="Switch Transit Hub">
+      <button class="hub-btn active" data-hub="umeda">Umeda / Osaka</button>
+      <button class="hub-btn" data-hub="berri">Berri–UQAM / MTL</button>
+    </div>
+    <div class="cam-group">
+      <button class="cam-pill active" data-cam="iso">Isometric</button>
+      <button class="cam-pill" data-cam="top">Top-Down</button>
+      <button class="cam-pill" data-cam="section">Cross-Section</button>
+      <button class="cam-pill" data-cam="sub">Underground</button>
+      <button class="cam-pill" id="expand-toggle-btn">Drawer</button>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Sheet -->
+  <div id="bottom-sheet">
+    <div class="sheet-handle-area" id="sheet-handle">
+      <div class="sheet-handle"></div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="controls">Sliders</button>
+      <button class="tab-btn" data-tab="layers">Layers</button>
+      <button class="tab-btn" data-tab="route">Transfer</button>
+      <button class="tab-btn" data-tab="inspect">Inspect</button>
+    </div>
+
+    <div class="sheet-body">
+      <!-- Tab 1: Sliders -->
+      <div id="tab-controls" class="tab-pane active">
+        <div class="control-row">
+          <div class="control-header">
+            <span>Explode Vertical Tiers &amp; Floors</span>
+            <span id="explode-val" class="control-val">1.0×</span>
+          </div>
+          <input id="explode-slider" type="range" min="1" max="5" step="0.1" value="1" />
+        </div>
+
+        <div class="control-row">
+          <div class="control-header">
+            <span>Building &amp; Mall Block Opacity</span>
+            <span id="block-opacity-val" class="control-val">48%</span>
+          </div>
+          <input id="block-opacity-slider" type="range" min="0" max="100" step="1" value="48" />
+        </div>
+
+        <div class="control-row">
+          <div class="control-header">
+            <span>Ground &amp; Terrain Opacity</span>
+            <span id="ground-opacity-val" class="control-val">42%</span>
+          </div>
+          <input id="ground-opacity-slider" type="range" min="0" max="100" step="1" value="42" />
+        </div>
+      </div>
+
+      <!-- Tab 2: Layers -->
+      <div id="tab-layers" class="tab-pane">
+        <div class="toggle-list">
+          <label class="toggle-item">
+            <input type="checkbox" id="toggle-rail" checked />
+            <span class="swatch" style="background:#38bdf8"></span>
+            <span id="layer-rail-label">Rail Platforms &amp; Station Levels</span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="toggle-malls" checked />
+            <span class="swatch" style="background:#a855f7"></span>
+            <span id="layer-malls-label">Malls, Towers &amp; Campus Buildings</span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="toggle-chikagai" checked />
+            <span class="swatch" style="background:#f59e0b"></span>
+            <span id="layer-chikagai-label">Underground Arcades (Chikagai / RÉSO)</span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="toggle-circulation" checked />
+            <span class="swatch" style="background:#22d3ee"></span>
+            <span>Interconnections, Vertical Links &amp; Tracks</span>
+          </label>
+          <div class="sub-toggles">
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-tracks" checked />
+              <span class="swatch" style="background:#60a5fa"></span>
+              <span>Rail / Métro Track Corridors</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-tunnels" checked />
+              <span class="swatch" style="background:#22d3ee"></span>
+              <span>Underground Passages &amp; Concourses</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-skybridges" checked />
+              <span class="swatch" style="background:#818cf8"></span>
+              <span>Elevated Skybridges &amp; Decks</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-escalators" checked />
+              <span class="swatch" style="background:#f472b6"></span>
+              <span>Escalator Banks</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-stairs" checked />
+              <span class="swatch" style="background:#facc15"></span>
+              <span>Stairwell Flights</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="toggle-elevators" checked />
+              <span class="swatch" style="background:#34d399"></span>
+              <span>Elevator Shafts &amp; Cabins</span>
+            </label>
+          </div>
+          <label class="toggle-item">
+            <input type="checkbox" id="toggle-grid" checked />
+            <span class="swatch" style="background:#64748b"></span>
+            <span>50m × 50m Metric Grid</span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="toggle-labels" checked />
+            <span class="swatch" style="background:#e2e8f0"></span>
+            <span>Floating 3D Labels</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Tab 3: Transfer Route -->
+      <div id="tab-route" class="tab-pane">
+        <div style="font-size:12px; color:#94a3b8; margin-bottom:6px;">Origin</div>
+        <select id="route-from"></select>
+        <div style="font-size:12px; color:#94a3b8; margin-bottom:6px;">Destination</div>
+        <select id="route-to"></select>
+        <div id="route-summary" style="font-size:12.5px; color:#e2e8f0; background:rgba(15,23,42,0.8); padding:10px; border-radius:8px; border:1px solid rgba(148,163,184,0.2); line-height:1.45;"></div>
+      </div>
+
+      <!-- Tab 4: Inspector -->
+      <div id="tab-inspect" class="tab-pane">
+        <div id="inspector-badge" class="badge">COMPLEX OVERVIEW</div>
+        <div id="inspector-title" class="insp-title">Osaka / Umeda Complex</div>
+        <div id="inspector-sub" class="insp-sub">Tap any building, floor, tunnel, skybridge, or station</div>
+        <p id="inspector-desc" style="font-size:12.5px; color:#cbd5e1; line-height:1.45;"></p>
+        <div id="inspector-stats" class="stat-grid"></div>
+        <div id="floor-stack-section" style="display:none; margin-top:10px;">
+          <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Tap Floor to Highlight in 3D</div>
+          <div id="floor-stack-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showError(msg) {
+      const el = document.getElementById('error-banner');
+      el.style.display = 'block';
+      el.textContent = '3D Error: ' + msg;
+    }
+
+    // Ignore masked cross-origin "Script error." events on mobile browsers when app still runs cleanly
+    window.addEventListener('error', (e) => {
+      if (!e || !e.message) return;
+      if (e.message === 'Script error.' && (!e.filename || e.filename === '')) return;
+      showError(e.message);
+    });
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load ' + src));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function boot() {
+      const threeCDNs = [
+        'https://unpkg.com/three@0.128.0/build/three.min.js',
+        'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
+      ];
+      const orbitCDNs = [
+        'https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js',
+        'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js',
+        'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js'
+      ];
+
+      let loadedThree = false;
+      for (const url of threeCDNs) {
+        try { await loadScript(url); loadedThree = true; break; } catch (_) {}
+      }
+      if (!loadedThree || typeof THREE === 'undefined') {
+        showError('Unable to load Three.js from CDN.');
+        return;
+      }
+
+      let loadedOrbit = false;
+      for (const url of orbitCDNs) {
+        try { await loadScript(url); loadedOrbit = true; break; } catch (_) {}
+      }
+      if (!loadedOrbit || typeof THREE.OrbitControls === 'undefined') {
+        showError('Unable to load OrbitControls from CDN.');
+        return;
+      }
+
+      initCombinedExplorer();
+    }
+
+    function initCombinedExplorer() {
+      // Unified true-to-scale converter: 1 Three.js world unit = 10 meters across BOTH hubs
+      const m = (meters) => meters / 10;
+
+      const makeFloors = (list) => list.map(([level, code, desc, color]) => ({ level, code, desc, color }));
+
+      const SHARED_CAMERAS = {
+        iso: { pos: [82, 74, 92], target: [0, 0, 0] },
+        top: { pos: [0, 155, 0.1], target: [0, 0, 0] },
+        section: { pos: [130, 14, 15], target: [0, 2, 0] },
+        sub: { pos: [60, -26, 70], target: [5, -2, 10] }
+      };
+
+      const HUB_DATA = {
+        umeda: {
+          id: 'umeda',
+          title: 'UMEDA / OSAKA 3D',
+          subtitle: 'Unified 1:10m Scale · Zoom Locked Across Hubs',
+          railLabel: 'Rail Station Platforms (8 Stations)',
+          mallsLabel: 'Above-Ground Malls & Towers (All Floors)',
+          chikagaiLabel: 'Subterranean Malls (Chikagai)',
+          overview: {
+            badge: 'COMPLEX OVERVIEW · OSAKA',
+            title: 'Osaka / Umeda Complex',
+            sub: '8 Rail Stations (~2.14M daily passengers) · 1:10m Scale',
+            desc: 'Sprawling multi-operator hub across Umeda and Umekita with 8 stations, 15 building/mall/chikagai blocks, 10 rail corridors, 20 underground passages, 8 skybridges, and vertical circulation.',
+            stats: [
+              ['Grid Square', '50m × 50m'],
+              ['Passages', '20 Tunnels · 8 Bridges'],
+              ['Vertical', '12 Esc · 8 Stair · 7 Lift'],
+              ['Rail Lines', '10 Corridors']
+            ]
+          },
+          streets: [
+            [110, 50, 44, 1150, 0x1e293b],
+            [-160, 120, 36, 1050, 0x1e293b],
+            [0, 120, 1100, 32, 0x1e293b],
+            [-250, -140, 140, 260, 0x064e3b]
+          ],
+          stations: [
+            { id: 'jr_osaka', name: 'JR Osaka (Elevated)', operator: 'JR West', levelY: 8.5, xM: -15, zM: 0, wM: 250, dM: 42, color: 0x38bdf8, passengers: '751,006 / day', platforms: '6 Island / 11 Tracks (3F)', desc: 'Elevated Tokaido, Osaka Loop, and Takarazuka platforms.' },
+            { id: 'jr_umekita', name: 'JR Osaka (Umekita B2)', operator: 'JR West', levelY: -13.0, xM: -210, zM: -115, wM: 45, dM: 180, color: 0x0284c7, passengers: 'In JR Osaka total', platforms: '2 Island / 4 Tracks (B2F)', desc: 'Subterranean Haruka & Osaka Higashi Line platforms.' },
+            { id: 'hankyu', name: 'Hankyu Osaka-Umeda', operator: 'Hankyu Railway', levelY: 12.0, xM: 175, zM: -145, wM: 72, dM: 165, color: 0xa855f7, passengers: '451,568 / day', platforms: '10 Platforms / 9 Tracks (3F)', desc: 'Elevated 3F Kobe, Takarazuka & Kyoto terminal.' },
+            { id: 'metro_midosuji', name: 'Metro Umeda (Midosuji)', operator: 'Osaka Metro', levelY: -9.5, xM: 110, zM: 15, wM: 32, dM: 175, color: 0xef4444, passengers: '420,718 / day', platforms: '2 Platforms / 2 Tracks (B2F)', desc: 'Busiest single subway station in Japan.' },
+            { id: 'hanshin', name: 'Hanshin Osaka-Umeda', operator: 'Hanshin Railway', levelY: -8.5, xM: 85, zM: 105, wM: 115, dM: 34, color: 0xf97316, passengers: '163,506 / day', platforms: '4 Platforms / 4 Tracks (B2F)', desc: 'Subterranean terminus under Hanshin Dept Store.' },
+            { id: 'metro_higashi', name: 'Metro Higashi-Umeda', operator: 'Osaka Metro', levelY: -14.5, xM: 225, zM: 145, wM: 28, dM: 155, color: 0xd946ef, passengers: '158,403 / day', platforms: '2 Side / 2 Tracks (B2F)', desc: 'Tanimachi Line station on east flank of Whity Umeda.' },
+            { id: 'metro_nishi', name: 'Metro Nishi-Umeda', operator: 'Osaka Metro', levelY: -14.0, xM: -145, zM: 145, wM: 28, dM: 165, color: 0x2563eb, passengers: '108,362 / day', platforms: '1 Island / 2 Tracks (B2F)', desc: 'Yotsubashi Line terminus near HERBIS & Diamor.' },
+            { id: 'jr_kitashinchi', name: 'JR Kitashinchi (Tozai)', operator: 'JR West', levelY: -18.5, xM: 35, zM: 295, wM: 165, dM: 26, color: 0xec4899, passengers: '84,858 / day', platforms: '1 Island / 2 Tracks (B3F)', desc: 'Deep underground JR Tozai Line station south of Diamor.' }
+          ],
+          buildings: [
+            {
+              id: 'lucua', name: 'LUCUA & LUCUA 1100', shortName: 'LUCUA / 1100', category: 'mall', badge: 'NORTH GATE · MALL',
+              xM: -20, zM: -55, wM: 220, dM: 55, floorHM: 4.5, color: 0xa855f7,
+              footprint: '220m × 55m', totalArea: '~185,000 m²', span: 'B2F – 11F (+28F Tower)',
+              desc: 'Twin vertical fashion malls above JR Osaka North Gate, linked to Toki-no-Hiroba and Grand Front.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Bar Chika & Metro Link', 0xf59e0b],
+                [-1, 'B1F', 'LUCUA Food Hall & JR Gate', 0xf59e0b],
+                [1, '1F', 'JR Concourse & Street', 0xa855f7],
+                [2, '2F', 'Toki-no-Hiroba & Skybridge', 0xc084fc],
+                [3, '3F', 'JR Bridge & Fashion', 0xa855f7],
+                [5, '5F', 'Upper Deck & Fashion', 0xc084fc],
+                [9, '9F', 'Tsutaya Books & Loft', 0xc084fc],
+                [10, '10F', 'LUCUA Dining', 0xe879f9],
+                [11, '11F', 'Cinema & Wind Plaza', 0xe879f9],
+                [14, '14F–28F', 'North Gate Office Tower', 0x6366f1]
+              ])
+            },
+            {
+              id: 'daimaru', name: 'Daimaru Umeda & LUCUA SOUTH', shortName: 'Daimaru Umeda', category: 'mall', badge: 'SOUTH GATE · DEPT STORE',
+              xM: -15, zM: 48, wM: 210, dM: 52, floorHM: 4.5, color: 0xec4899,
+              footprint: '210m × 52m', totalArea: '~160,000 m²', span: 'B2F – 16F (+Granvia)',
+              desc: 'South Gate department store housing Pokémon Center, Nintendo OSAKA, and Hands.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Gochisou Sweets & Deli', 0xf59e0b],
+                [-1, 'B1F', 'Depachika & Hanshin Link', 0xf59e0b],
+                [1, '1F', 'South Gate Plaza', 0xec4899],
+                [3, '3F', 'Fashion & Deck', 0xf472b6],
+                [10, '10F–12F', 'Hands Umeda', 0xf472b6],
+                [13, '13F', 'Nintendo & Pokémon Center', 0xf43f5e],
+                [15, '15F–16F', 'Museum & Dining', 0xf472b6],
+                [19, '19F–27F', 'Hotel Granvia Osaka', 0x8b5cf6]
+              ])
+            },
+            {
+              id: 'grandfront_south', name: 'GRAND FRONT OSAKA (South)', shortName: 'Grand Front S', category: 'mall', badge: 'UMEKITA PHASE 1',
+              xM: -85, zM: -145, wM: 135, dM: 85, floorHM: 4.5, color: 0x8b5cf6,
+              footprint: '135m × 85m', totalArea: '~240,000 m²', span: 'B1F – 9F + 38F Tower A',
+              desc: 'Connected via 2F skybridge from JR Osaka & LUCUA.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Umekita Cellar', 0xf59e0b],
+                [1, '1F', 'Umekita Plaza', 0x8b5cf6],
+                [2, '2F', 'JR Skybridge', 0xa78bfa],
+                [6, '6F', 'Kinokuniya Books', 0xa78bfa],
+                [7, '7F–8F', 'Umekita Dining', 0xa78bfa],
+                [12, '12F–38F', 'Tower A Offices', 0x4f46e5]
+              ])
+            },
+            {
+              id: 'grandfront_north', name: 'GRAND FRONT OSAKA (North)', shortName: 'Grand Front N', category: 'mall', badge: 'UMEKITA PHASE 1',
+              xM: -95, zM: -265, wM: 140, dM: 115, floorHM: 4.5, color: 0x7c3aed,
+              footprint: '140m × 115m', totalArea: '~260,000 m²', span: 'B1F – 6F + 38F Tower B',
+              desc: 'Knowledge Capital, MUJI flagship, and InterContinental Osaka.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Umeda Kita Dining', 0xf59e0b],
+                [1, '1F', 'Knowledge Plaza', 0x7c3aed],
+                [2, '2F', 'South-North Skybridge', 0x8b5cf6],
+                [4, '4F', 'MUJI Flagship', 0x8b5cf6],
+                [6, '6F', 'UMEKITA FLOOR Dining', 0xa78bfa],
+                [10, '10F–38F', 'Offices & InterContinental', 0x4f46e5]
+              ])
+            },
+            {
+              id: 'grandgreen', name: 'GRAND GREEN OSAKA', shortName: 'Grand Green', category: 'mall', badge: 'UMEKITA PHASE 2',
+              xM: -235, zM: -135, wM: 115, dM: 210, floorHM: 4.6, color: 0x10b981,
+              footprint: '115m × 210m', totalArea: '~320,000 m²', span: 'B1F – 4F + 39F Tower',
+              desc: 'Above JR Umekita Underground Station with Time Out Market Osaka & Umekita Park.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Time Out Market & Station Link', 0xf59e0b],
+                [1, '1F', 'Park Shops & Umekita Park', 0x10b981],
+                [2, '2F', 'Elevated Deck to JR/GF', 0x34d399],
+                [3, '3F', 'Umekita Onsen Spa', 0x10b981],
+                [8, '8F–39F', 'Park Tower & Waldorf Astoria', 0x059669]
+              ])
+            },
+            {
+              id: 'kitte', name: 'KITTE Osaka (JP Tower)', shortName: 'KITTE Osaka', category: 'mall', badge: 'WEST GATE · JP TOWER',
+              xM: -165, zM: 55, wM: 75, dM: 85, floorHM: 4.6, color: 0xd946ef,
+              footprint: '75m × 85m', totalArea: '~227,000 m²', span: 'B1F – 6F + 39F Tower',
+              desc: 'Connected to JR West Exit and Garden Avenue underground corridor.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Ura-Umeda Dining', 0xf59e0b],
+                [1, '1F', 'Atrium & Post Office', 0xd946ef],
+                [2, '2F', 'JR West Bridge & Shops', 0xe879f9],
+                [4, '4F–5F', 'Dining Selection', 0xe879f9],
+                [6, '6F', 'Sky Theater MBS', 0xf0abfc],
+                [11, '11F–39F', 'Offices & Station Hotel', 0x86198f]
+              ])
+            },
+            {
+              id: 'inogate', name: 'Inogate Osaka (Baltica 03)', shortName: 'Inogate', category: 'mall', badge: 'JR WEST EXIT',
+              xM: -155, zM: -25, wM: 60, dM: 55, floorHM: 4.5, color: 0xc026d3,
+              footprint: '60m × 55m', totalArea: '~60,000 m²', span: '2F – 5F + 23F Office',
+              desc: 'Above JR Osaka West Gate housing Baltica 03 gourmet dining.',
+              floors: makeFloors([
+                [1, '1F', 'JR West Gate Concourse', 0x38bdf8],
+                [2, '2F', 'Grand Green Bridge', 0xc026d3],
+                [3, '3F–5F', 'Baltica 03 Dining', 0xd946ef],
+                [6, '6F–23F', 'Smart Offices', 0x701a75]
+              ])
+            },
+            {
+              id: 'yodobashi', name: 'Yodobashi Umeda & LINKS', shortName: 'Yodobashi / LINKS', category: 'mall', badge: 'NORTH PLAZA',
+              xM: 95, zM: -135, wM: 115, dM: 95, floorHM: 4.5, color: 0x3b82f6,
+              footprint: '115m × 95m', totalArea: '~220,000 m²', span: 'B2F – 13F + 35F Hotel',
+              desc: 'Electronics flagship and LINKS UMEDA connected via 2F deck and B1/B2 passages.',
+              floors: makeFloors([
+                [-2, 'B2F', 'PC Parts & Subway Link', 0xf59e0b],
+                [-1, 'B1F', 'Yokocho Dining', 0xf59e0b],
+                [1, '1F', 'Telecom & LINKS Plaza', 0x3b82f6],
+                [2, '2F', 'JR Deck / Cameras & UNIQLO', 0x60a5fa],
+                [6, '6F–8F', 'Nitori, Sports & Dining', 0x60a5fa],
+                [14, '14F–35F', 'Hotel Hankyu RESPIRE', 0x1d4ed8]
+              ])
+            },
+            {
+              id: 'hankyu_dept', name: 'Hankyu Umeda Main Store', shortName: 'Hankyu Dept', category: 'mall', badge: 'FLAGSHIP DEPT STORE',
+              xM: 185, zM: 5, wM: 95, dM: 105, floorHM: 4.5, color: 0x9333ea,
+              footprint: '95m × 105m', totalArea: '~180,000 m²', span: 'B2F – 13F + 41F Tower',
+              desc: 'Flagship department store anchored by 9F Festival Plaza and B1/B2 links.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Fresh Foods & Wine', 0xf59e0b],
+                [-1, 'B1F', 'Depachika Food Hall', 0xf59e0b],
+                [1, '1F', 'Luxury & Cosmetics', 0x9333ea],
+                [2, '2F', 'JR/Hanshin Skybridge', 0xa855f7],
+                [9, '9F', 'Festival Plaza Atrium', 0xc084fc],
+                [12, '12F–13F', 'Iwai Dining & Rooftop', 0xa855f7],
+                [15, '15F–41F', 'Hankyu Office Tower', 0x581c87]
+              ])
+            },
+            {
+              id: 'hanshin_dept', name: 'Hanshin Umeda Main Store', shortName: 'Hanshin Dept', category: 'mall', badge: 'DEPT STORE',
+              xM: 120, zM: 115, wM: 95, dM: 75, floorHM: 4.5, color: 0xe11d48,
+              footprint: '95m × 75m', totalArea: '~130,000 m²', span: 'B2F – 11F + 38F Tower',
+              desc: 'Above Hanshin Station with legendary B1 food hall and 9F Food Hall.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Hanshin Bar Yokocho', 0xf59e0b],
+                [-1, 'B1F', 'Depachika & Station Gate', 0xf59e0b],
+                [1, '1F–8F', 'Dept Store & Tigers Shop', 0xe11d48],
+                [9, '9F', 'Hanshin Grand Food Hall', 0xf43f5e],
+                [11, '11F–38F', 'Twin Towers South', 0x881337]
+              ])
+            },
+            {
+              id: 'hep', name: 'HEP FIVE & HEP NAVIO', shortName: 'HEP FIVE', category: 'mall', badge: 'MALL & FERRIS WHEEL',
+              xM: 255, zM: -115, wM: 85, dM: 95, floorHM: 4.4, color: 0xef4444,
+              footprint: '85m × 95m', totalArea: '~95,000 m²', span: 'B2F – 9F (+Ferris Wheel)',
+              desc: 'Youth mall with 7F red Ferris wheel boarding, linked to Whity Umeda.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Whity Umeda Link', 0xf59e0b],
+                [-1, 'B1F', 'Street Fashion & NAVIO', 0xf59e0b],
+                [1, '1F–6F', 'Fashion & Character Goods', 0xef4444],
+                [7, '7F', 'Dining & Red Ferris Wheel', 0xf87171],
+                [8, '8F–9F', 'Amusement & VR', 0xef4444]
+              ])
+            },
+            {
+              id: 'herbis', name: 'HERBIS PLAZA & ENT', shortName: 'HERBIS PLAZA', category: 'mall', badge: 'NISHI-UMEDA LUXURY',
+              xM: -125, zM: 175, wM: 115, dM: 75, floorHM: 4.5, color: 0x6366f1,
+              footprint: '115m × 75m', totalArea: '~145,000 m²', span: 'B2F – 7F + 40F Tower',
+              desc: 'Connected via Garden Avenue underground mall to JR Osaka & Nishi-Umeda.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Garden Ave & Dining', 0xf59e0b],
+                [-1, 'B1F', 'Cafes & Nishi-Umeda Link', 0xf59e0b],
+                [1, '1F–4F', 'Luxury Flagships', 0x6366f1],
+                [5, '5F–7F', 'Billboard Live & Theater', 0x818cf8],
+                [10, '10F–40F', 'The Ritz-Carlton Osaka', 0x312e81]
+              ])
+            },
+            {
+              id: 'sanbangai', name: 'Hankyu Sanbangai', shortName: 'Sanbangai (B1/B2)', category: 'chikagai', badge: 'CHIKAGAI · NORTH',
+              xM: 175, zM: -175, wM: 95, dM: 210, floorHM: 4.2, color: 0xf59e0b,
+              footprint: '95m × 210m', totalArea: '~42,000 m²', span: 'B2F – 1F',
+              desc: 'Subterranean mall beneath Hankyu Station with Umeda Food Hall and B2F indoor canal.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Umeda Food Hall & Canal', 0xd97706],
+                [-1, 'B1F', 'Kiddy Land & Metro Link', 0xf59e0b],
+                [1, '1F', 'Hankyu Ground Concourse', 0xfbbf24]
+              ])
+            },
+            {
+              id: 'whity', name: 'Whity Umeda', shortName: 'Whity Umeda', category: 'chikagai', badge: 'CHIKAGAI · EAST-WEST',
+              xM: 245, zM: 115, wM: 220, dM: 90, floorHM: 4.2, color: 0xf59e0b,
+              footprint: '220m × 90m', totalArea: '~31,000 m²', span: 'B1F – B2F',
+              desc: 'East-west underground arcade linking Umeda, Higashi-Umeda, Hankyu, Hanshin, and HEP FIVE.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Higashi-Umeda Link', 0xd97706],
+                [-1, 'B1F', 'Main Arcade & Izumi-no-Hiroba', 0xf59e0b]
+              ])
+            },
+            {
+              id: 'diamor', name: 'Diamor Osaka & Ekimae 1–4', shortName: 'Diamor Osaka', category: 'chikagai', badge: 'CHIKAGAI · SOUTH',
+              xM: 45, zM: 235, wM: 260, dM: 110, floorHM: 4.2, color: 0xeab308,
+              footprint: '260m × 110m', totalArea: '~45,000 m²', span: 'B1F – B2F',
+              desc: 'Skylit marble underground avenue linking Hanshin, Nishi-Umeda, Higashi-Umeda, and JR Kitashinchi.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Diamor Avenue & Kitashinchi', 0xca8a04],
+                [-1, 'B1F', 'Ekimae Bldgs 1–4 Shops', 0xeab308]
+              ])
+            }
+          ],
+          tracks: [
+            { name: 'JR Tokaido Main Line', operator: 'JR West', elev: '+8.5m (3F)', color: 0x38bdf8, pts: [[-560, 8.5, -14], [-15, 8.5, -14], [560, 8.5, -14]] },
+            { name: 'JR Osaka Loop Line', operator: 'JR West', elev: '+8.5m (3F)', color: 0xf43f5e, pts: [[-540, 8.5, 4], [-15, 8.5, 4], [540, 8.5, 4]] },
+            { name: 'JR Takarazuka Line', operator: 'JR West', elev: '+8.5m (3F)', color: 0xfbbf24, pts: [[-560, 8.5, 16], [-15, 8.5, 16], [420, 8.5, 16]] },
+            { name: 'JR Umekita Line (Haruka)', operator: 'JR West', elev: '-13.0m (B2F)', color: 0x0284c7, pts: [[-265, -13.0, -560], [-210, -13.0, -115], [-210, -13.0, 220], [-140, -13.0, 560]] },
+            { name: 'JR Tozai Line (Kitashinchi)', operator: 'JR West', elev: '-18.5m (B3F)', color: 0xec4899, pts: [[-560, -18.5, 295], [35, -18.5, 295], [560, -18.5, 295]] },
+            { name: 'Hankyu Kobe/Takarazuka/Kyoto', operator: 'Hankyu', elev: '+12.0m (3F)', color: 0xa855f7, pts: [[160, 12.0, -560], [175, 12.0, -145]] },
+            { name: 'Hanshin Main Line', operator: 'Hanshin', elev: '-8.5m (B2F)', color: 0xf97316, pts: [[-560, -8.5, 105], [85, -8.5, 105]] },
+            { name: 'Osaka Metro Midosuji Line', operator: 'Osaka Metro', elev: '-9.5m (B2F)', color: 0xef4444, pts: [[110, -9.5, -560], [110, -9.5, 15], [110, -9.5, 560]] },
+            { name: 'Osaka Metro Tanimachi Line', operator: 'Osaka Metro', elev: '-14.5m (B2F)', color: 0xd946ef, pts: [[245, -14.5, -560], [225, -14.5, 145], [225, -14.5, 560]] },
+            { name: 'Osaka Metro Yotsubashi Line', operator: 'Osaka Metro', elev: '-14.0m (B2F)', color: 0x2563eb, pts: [[-145, -14.0, 145], [-145, -14.0, 560]] }
+          ],
+          passages: [
+            { name: 'JR Midosuji–Central–Sakurabashi Concourse (1F)', pts: [[115, 0.4, 22], [15, 0.4, 22], [-105, 0.4, 22], [-155, 0.4, 15]], r: 0.34, desc: 'Main 1F east-west spine beneath JR Osaka platforms.' },
+            { name: 'JR Central ↔ LUCUA B1F ↔ Yodobashi B1F', pts: [[10, -4.0, 15], [10, -4.0, -55], [75, -4.0, -105], [95, -4.0, -135]], r: 0.30, desc: 'B1F north-south passage linking JR Central, LUCUA, and Yodobashi.' },
+            { name: 'JR South ↔ Daimaru B1F ↔ Hanshin B1F', pts: [[15, -4.0, 28], [45, -4.0, 65], [95, -4.0, 105]], r: 0.32, desc: 'Direct B1F link between JR South Gate, Daimaru, and Hanshin.' },
+            { name: 'JR Osaka–Umekita–Grand Green Passage (B1F)', pts: [[-125, -4.2, -10], [-165, -7.5, -65], [-210, -10.5, -115], [-235, -6.0, -145]], r: 0.34, desc: 'Underground link from JR Osaka to Umekita Station & Grand Green.' },
+            { name: 'Grand Front South B1F ↔ North B1F Link', pts: [[-85, -4.2, -115], [-85, -4.2, -165], [-92, -4.2, -235]], r: 0.28, desc: 'Umekita Cellar passage between Grand Front South and North.' },
+            { name: 'Grand Front South B1F ↔ Yodobashi B1F Link', pts: [[-75, -4.2, -125], [-10, -4.2, -95], [75, -4.2, -125]], r: 0.28, desc: 'B1F link connecting Grand Front South, North Gate, and Yodobashi.' },
+            { name: 'Midosuji B1F/B2F North–South Subway Spine', pts: [[110, -5.2, -155], [110, -5.2, -35], [110, -5.2, 55], [110, -5.2, 125]], r: 0.36, desc: 'Primary north-south subterranean spine alongside Metro Midosuji Line.' },
+            { name: 'Hankyu 1F/B1F ↔ Metro Umeda ↔ JR Midosuji', pts: [[175, -4.2, -95], [140, -4.2, -40], [110, -4.2, -10]], r: 0.34, desc: 'Commuter transfer corridor between Hankyu, Metro Umeda, and JR.' },
+            { name: 'Hankyu Sanbangai ↔ Yodobashi B2F Passage', pts: [[175, -7.8, -175], [135, -7.8, -150], [95, -7.8, -135]], r: 0.30, desc: 'Subterranean link between Hankyu Sanbangai and Yodobashi Umeda.' },
+            { name: 'Hankyu Dept B1F ↔ Hanshin Dept B1F Link', pts: [[175, -4.2, 20], [155, -4.2, 65], [130, -4.2, 105]], r: 0.30, desc: 'B1F department store connection beneath Hankyu–Hanshin plaza.' },
+            { name: 'Whity Umeda North Mall (Hankyu ↔ HEP FIVE)', pts: [[165, -4.5, -20], [215, -4.5, -65], [255, -4.5, -95]], r: 0.30, desc: 'Northern Whity Umeda branch to HEP FIVE & Hankyu Men’s.' },
+            { name: 'Whity Umeda Center–East (↔ Izumi-no-Hiroba)', pts: [[145, -4.5, 85], [225, -4.5, 115], [345, -4.5, 125]], r: 0.34, desc: 'Main east-west Whity Umeda arcade to Izumi-no-Hiroba.' },
+            { name: 'Whity Umeda South (Hanshin ↔ Higashi-Umeda)', pts: [[125, -4.5, 125], [185, -4.5, 140], [235, -4.5, 150]], r: 0.32, desc: 'Southern Whity corridor to Metro Tanimachi / Higashi-Umeda.' },
+            { name: 'Garden Avenue Mall (Hanshin ↔ Nishi-Umeda ↔ HERBIS)', pts: [[75, -4.8, 115], [-35, -4.8, 115], [-135, -4.8, 125], [-135, -4.8, 175]], r: 0.34, desc: 'West underground mall linking Hanshin, Nishi-Umeda, and HERBIS.' },
+            { name: 'JR West Gate ↔ KITTE B1F ↔ Garden Avenue', pts: [[-155, -4.5, 10], [-160, -4.5, 55], [-145, -4.8, 110]], r: 0.30, desc: 'Link from JR West Gate through KITTE B1F to Garden Avenue.' },
+            { name: 'Diamor Osaka Cross Street (E–W Avenue, B2F)', pts: [[-135, -8.8, 185], [-25, -8.8, 195], [115, -8.8, 195], [225, -8.8, 185]], r: 0.34, desc: 'Skylit marble avenue linking Nishi-Umeda, Hanshin, and Higashi-Umeda.' },
+            { name: 'Diamor Market & Casual Streets (→ JR Kitashinchi)', pts: [[35, -8.8, 130], [35, -8.8, 215], [35, -13.5, 285]], r: 0.34, desc: 'North-south Diamor avenues down to JR Kitashinchi Station.' },
+            { name: 'Osaka Ekimae Bldg 1 ↔ Bldg 2 B1/B2 Link', pts: [[-85, -6.5, 225], [-25, -6.5, 230], [25, -6.5, 235]], r: 0.28, desc: 'Underground corridor connecting Ekimae Bldgs 1 and 2.' },
+            { name: 'Osaka Ekimae Bldg 2 ↔ 3 ↔ 4 B1/B2 Link', pts: [[25, -6.5, 235], [105, -6.5, 235], [185, -6.5, 225]], r: 0.28, desc: 'Underground corridor connecting Ekimae Bldgs 2, 3, and 4.' },
+            { name: 'Nishi-Umeda ↔ Dojima Chikagai (Dotchika) South', pts: [[-145, -8.8, 185], [-145, -8.8, 295], [-145, -8.8, 410]], r: 0.28, desc: 'Southern subterranean continuation toward Nakanoshima/Higobashi.' }
+          ],
+          skybridges: [
+            { name: 'Toki-no-Hiroba 2F/3F/5F Atrium Bridge', pts: [[-20, 9.5, -45], [-20, 11.5, 0], [-20, 9.5, 42]], r: 0.42, desc: 'Giant bridge spanning across JR Osaka tracks between LUCUA and Daimaru.' },
+            { name: 'JR Osaka / LUCUA 2F ↔ Grand Front South 2F', pts: [[-55, 6.2, -55], [-70, 6.2, -95], [-85, 6.2, -135]], r: 0.36, desc: '2F skybridge connecting JR Osaka North Gate to Grand Front South.' },
+            { name: 'Grand Front South 2F ↔ North 2F Skybridge', pts: [[-88, 6.2, -165], [-92, 6.2, -205], [-95, 6.2, -245]], r: 0.34, desc: '2F skybridge between Grand Front South and North.' },
+            { name: 'Umekita 2F Deck (Grand Front ↔ Grand Green)', pts: [[-115, 6.2, -145], [-175, 6.2, -140], [-225, 6.2, -135]], r: 0.36, desc: '2F elevated deck linking Grand Front and Grand Green Osaka.' },
+            { name: 'JR North 2F ↔ Yodobashi / LINKS 2F Deck', pts: [[15, 6.2, -55], [55, 6.2, -95], [85, 6.2, -125]], r: 0.36, desc: '2F pedestrian deck linking JR Osaka North and Yodobashi.' },
+            { name: 'Yodobashi 2F ↔ Hankyu Osaka-Umeda 2F Deck', pts: [[115, 6.2, -135], [145, 6.2, -135], [170, 6.2, -135]], r: 0.32, desc: '2F walkway connecting Yodobashi/LINKS and Hankyu Umeda.' },
+            { name: 'JR South 2F ↔ Hankyu Dept 2F ↔ Hanshin 2F', pts: [[35, 6.2, 48], [115, 6.2, 35], [175, 6.2, 15], [135, 6.2, 95]], r: 0.36, desc: '2F skybridge loop linking South Gate, Hankyu, and Hanshin Dept Stores.' },
+            { name: 'JR West 2F ↔ Inogate 2F ↔ KITTE Osaka 2F', pts: [[-125, 6.2, 5], [-155, 6.2, -20], [-160, 6.2, 45]], r: 0.32, desc: '2F elevated deck connecting JR West Gate, Inogate, and KITTE.' }
+          ],
+          escalators: [
+            { name: 'JR Osaka 3F ↔ 1F Concourse Escalator', from: [-25, 8.5, 12], to: [-25, 0.2, 24] },
+            { name: 'JR 1F ↔ B1F LUCUA/Subway Escalator', from: [10, 0.2, 18], to: [10, -4.2, -10] },
+            { name: 'Toki-no-Hiroba 2F ↔ 5F Escalator', from: [-20, 5.5, -20], to: [-20, 18.0, 5] },
+            { name: 'Hankyu 3F ↔ 1F Concourse Escalator', from: [170, 12.0, -90], to: [170, 0.2, -70] },
+            { name: 'Hankyu 1F ↔ B1/B2 Sanbangai Escalator', from: [165, 0.2, -85], to: [165, -8.0, -105] },
+            { name: 'Grand Front 2F ↔ B1F Escalator', from: [-85, 6.2, -115], to: [-85, -4.2, -100] },
+            { name: 'Grand Green 2F ↔ Umekita B2 Escalator', from: [-215, 6.2, -125], to: [-210, -13.0, -110] },
+            { name: 'Metro Midosuji B2F ↔ B1F Escalator', from: [110, -9.5, -20], to: [110, -5.0, -5] },
+            { name: 'Hanshin B2F ↔ B1F Escalator', from: [85, -8.5, 105], to: [95, -4.2, 95] },
+            { name: 'Higashi-Umeda B2F ↔ Whity B1F Escalator', from: [225, -14.5, 145], to: [220, -4.5, 130] },
+            { name: 'Nishi-Umeda B2F ↔ Garden Ave Escalator', from: [-145, -14.0, 145], to: [-140, -4.8, 125] },
+            { name: 'Diamor B2F ↔ JR Kitashinchi B3F Escalator', from: [35, -8.8, 255], to: [35, -18.5, 285] }
+          ],
+          stairwells: [
+            { name: 'JR Central Stairwell (1F ↔ B1F)', x: 5, z: 22, yLow: -4.2, yHigh: 0.4 },
+            { name: 'JR Midosuji Stairwell (3F ↔ 1F)', x: 55, z: 12, yLow: 0.4, yHigh: 8.5 },
+            { name: 'Izumi-no-Hiroba Stairs (1F ↔ B2F)', x: 295, z: 120, yLow: -9.0, yHigh: 0.2 },
+            { name: 'Hanshin Station ↔ B1F Stairs', x: 95, z: 95, yLow: -8.5, yHigh: -4.2 },
+            { name: 'LUCUA Atrium Stairs (1F ↔ 5F)', x: -35, z: -45, yLow: 0.4, yHigh: 18.0 },
+            { name: 'Yodobashi / LINKS Stairs (B2F ↔ 2F)', x: 95, z: -120, yLow: -8.0, yHigh: 6.2 },
+            { name: 'Diamor Sunken Stairs (B1F ↔ B2F)', x: 35, z: 195, yLow: -8.8, yHigh: -4.2 },
+            { name: 'KITTE Atrium Stairs (1F ↔ 6F)', x: -165, z: 55, yLow: 0.4, yHigh: 22.0 }
+          ],
+          elevators: [
+            { name: 'North Gate / LUCUA Lift Core', x: -55, z: -55, yMin: -8.5, yMax: 45.0 },
+            { name: 'South Gate / Daimaru Lift Core', x: -45, z: 48, yMin: -8.5, yMax: 55.0 },
+            { name: 'Grand Front South Lift Core', x: -85, z: -145, yMin: -4.5, yMax: 45.0 },
+            { name: 'Umekita / Grand Green Lift', x: -215, z: -115, yMin: -13.0, yMax: 25.0 },
+            { name: 'Hankyu / Sanbangai Lift Core', x: 175, z: -115, yMin: -9.0, yMax: 38.0 },
+            { name: 'Hanshin / Midosuji Barrier-Free Lift', x: 110, z: 75, yMin: -9.5, yMax: 35.0 },
+            { name: 'Nishi-Umeda / HERBIS Lift Core', x: -135, z: 165, yMin: -14.0, yMax: 32.0 }
+          ],
+          routeNodes: [
+            { id: 'jr_osaka', name: 'JR Osaka (Elevated 3F)', xM: -15, yM: 8.5, zM: 0 },
+            { id: 'jr_umekita', name: 'JR Osaka (Umekita B2)', xM: -210, yM: -13.0, zM: -115 },
+            { id: 'hankyu', name: 'Hankyu Osaka-Umeda (3F)', xM: 175, yM: 12.0, zM: -145 },
+            { id: 'metro_midosuji', name: 'Metro Umeda (Midosuji B2)', xM: 110, yM: -9.5, zM: 15 },
+            { id: 'hanshin', name: 'Hanshin Osaka-Umeda (B2)', xM: 85, yM: -8.5, zM: 105 },
+            { id: 'metro_higashi', name: 'Metro Higashi-Umeda (B2)', xM: 225, yM: -14.5, zM: 145 },
+            { id: 'metro_nishi', name: 'Metro Nishi-Umeda (B2)', xM: -145, yM: -14.0, zM: 145 },
+            { id: 'jr_kitashinchi', name: 'JR Kitashinchi (Tozai B3)', xM: 35, yM: -18.5, zM: 295 }
+          ],
+          defaultFromIdx: 0,
+          defaultToIdx: 6
+        },
+
+        berri: {
+          id: 'berri',
+          title: 'BERRI–UQAM 3D (MONTRÉAL)',
+          subtitle: 'Unified 1:10m Scale · Zoom Locked Across Hubs',
+          railLabel: 'Métro Levels (B1 Mezzanine + Orange / Green / Yellow)',
+          mallsLabel: 'Connected Buildings (UQAM / BAnQ / Place Dupuis)',
+          chikagaiLabel: 'RÉSO Underground Halls & Bus Terminal',
+          overview: {
+            badge: 'STM CENTRAL HUB · MONTRÉAL',
+            title: 'Berri–UQAM Station',
+            sub: '5 Subterranean Levels (B1 to B5 · -27.4m) · 1:10m Scale',
+            desc: 'Cruciform Montréal Métro hub beneath Rue Berri & Boul. de Maisonneuve connecting Orange, Green, and Yellow lines with UQAM pavilions, Grande Bibliothèque (BAnQ), Place Dupuis, and Gare d’autocars.',
+            stats: [
+              ['Grid Square', '50m × 50m (Unified)'],
+              ['Max Depth', '27.4m (Yellow B5)'],
+              ['Daily Volume', '~115k/day w/ transfers'],
+              ['Lines', 'Orange · Green · Yellow']
+            ]
+          },
+          streets: [
+            [0, 0, 22, 500, 0x1e293b],
+            [-85, 0, 20, 500, 0x1e293b],
+            [0, 0, 500, 22, 0x1e293b],
+            [0, 115, 500, 22, 0x1e293b],
+            [0, -145, 500, 20, 0x1e293b],
+            [55, 60, 55, 75, 0x064e3b]
+          ],
+          stations: [
+            { id: 'mezzanine_b1', name: 'B1 — Cruciform Mezzanine ("La Puck")', operator: 'STM (Ticketing & Hub)', levelY: -5.5, xM: -10, zM: 0, wM: 78, dM: 78, color: 0x38bdf8, passengers: '~115,000 / day (w/ transfers)', platforms: 'Central Fare-Paid Hall + 4 Access Arms', desc: 'Main cruciform ticket hall at -5.5m beneath Berri & De Maisonneuve with radiating tunnels to Place Dupuis, BAnQ, UQAM, Ste-Catherine, and Gare d’autocars.' },
+            { id: 'orange_b2', name: 'B2 — Orange Line Platforms (Line 2)', operator: 'STM Métro', levelY: -10.7, xM: 0, zM: 0, wM: 24, dM: 155, color: 0xf97316, passengers: 'Côte-Vertu ↔ Montmorency', platforms: '2 Side Platforms / 2 Tracks (-10.7m)', desc: 'Runs north–south directly beneath Rue Berri at 10.7m depth.' },
+            { id: 'green_b3', name: 'B3 — Green Line Platforms (Line 1)', operator: 'STM Métro', levelY: -16.8, xM: 0, zM: 0, wM: 155, dM: 24, color: 0x10b981, passengers: 'Angrignon ↔ Honoré-Beaugrand', platforms: '2 Side Platforms / 2 Tracks (-16.8m)', desc: 'Runs east–west beneath Boul. de Maisonneuve at 16.8m depth.' },
+            { id: 'transfer_b4', name: 'B4 — Yellow Line Transfer Concourse', operator: 'STM Métro', levelY: -22.0, xM: -55, zM: 18, wM: 58, dM: 22, color: 0xfacc15, passengers: 'Interchange Gallery', platforms: 'Rock-Cut Transfer Mezzanine (-22.0m)', desc: 'Intermediate transfer mezzanine carved into bedrock west toward Rue Saint-Denis.' },
+            { id: 'yellow_b5', name: 'B5 — Yellow Line Terminus (Line 4)', operator: 'STM Métro', levelY: -27.4, xM: -75, zM: 35, wM: 24, dM: 150, color: 0xeab308, passengers: 'Berri-UQAM ↔ Longueuil', platforms: '2 Side Platforms / 2 Tracks (-27.4m)', desc: 'Second-deepest station level in the Montréal Métro (-27.4m), aligned beneath Rue Saint-Denis.' }
+          ],
+          buildings: [
+            {
+              id: 'place_dupuis', name: 'Place Dupuis & Hôtel Gouverneur', shortName: 'Place Dupuis', category: 'mall', badge: 'RÉSO EAST · MALL & HOTEL',
+              xM: 65, zM: -55, wM: 75, dM: 75, floorHM: 4.0, color: 0xa855f7,
+              footprint: '75m × 75m', totalArea: '~85,000 m²', span: 'B2F – 3F Mall + 30F Hotel/Office',
+              desc: 'Commercial gallery and office/hotel complex at NE corner of Berri & De Maisonneuve, linked to Berri-UQAM B1.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Underground Parking & Service Link', 0xf59e0b],
+                [-1, 'B1F', 'RÉSO Mall, Food Court & Metro Tunnel', 0xf59e0b],
+                [1, '1F', 'Rue Berri / De Maisonneuve Shops', 0xa855f7],
+                [2, '2F', 'Upper Retail Gallery & Clinic', 0xc084fc],
+                [3, '3F', 'Commercial & Conference Deck', 0xa855f7],
+                [8, '4F–30F', 'Hôtel Gouverneur Place Dupuis & Offices', 0x6366f1]
+              ])
+            },
+            {
+              id: 'banq', name: 'Grande Bibliothèque (BAnQ)', shortName: 'Grande Bibliothèque', category: 'mall', badge: 'CULTURAL · SUNKEN GARDEN LINK',
+              xM: 65, zM: -145, wM: 85, dM: 65, floorHM: 4.2, color: 0x3b82f6,
+              footprint: '85m × 65m', totalArea: '~33,000 m²', span: 'B2F – 4F Reading Halls',
+              desc: 'Connected on B1/B2 via a sunken garden tunnel into Berri-UQAM’s central ticket hall.',
+              floors: makeFloors([
+                [-2, 'B2F', 'Metro Tunnel Link & Auditorium', 0xf59e0b],
+                [-1, 'B1F', 'Sunken Garden Metro Entrance & Café', 0xf59e0b],
+                [1, '1F', 'Main Atrium & Berri Entrance', 0x3b82f6],
+                [2, '2F', 'Literature, Arts & Reading Rooms', 0x60a5fa],
+                [3, '3F', 'Humanities, Sciences & Periodicals', 0x3b82f6],
+                [4, '4F', 'Quebec Heritage Collection & Study', 0x60a5fa]
+              ])
+            },
+            {
+              id: 'uqam_j', name: 'UQAM — Pavillon Judith-Jasmin (J)', shortName: 'UQAM Judith-Jasmin', category: 'mall', badge: 'UNIVERSITY · DIRECT METRO LINK',
+              xM: -50, zM: 55, wM: 70, dM: 95, floorHM: 4.2, color: 0x8b5cf6,
+              footprint: '70m × 95m', totalArea: '~52,000 m²', span: 'B1F – 6F',
+              desc: 'Heart of UQAM’s campus opening directly into Berri-UQAM B1 mezzanine.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Metro Mezzanine Connection & Cafeteria', 0xf59e0b],
+                [1, '1F', 'Agora Atrium & Ste-Catherine', 0x8b5cf6],
+                [2, '2F', 'Classrooms & Skybridge to A', 0xa78bfa],
+                [3, '3F–4F', 'Communications & Faculty Offices', 0x8b5cf6],
+                [5, '5F–6F', 'Research Centers & Studios', 0x7c3aed]
+              ])
+            },
+            {
+              id: 'uqam_a', name: 'UQAM — Pavillon Hubert-Aquin (A)', shortName: 'UQAM Hubert-Aquin', category: 'mall', badge: 'UNIVERSITY · SOCIAL SCIENCES',
+              xM: -135, zM: 55, wM: 55, dM: 95, floorHM: 4.2, color: 0x7c3aed,
+              footprint: '55m × 95m', totalArea: '~36,000 m²', span: 'B1F – 6F',
+              desc: 'Linked indoors via B1F tunnel and 2F bridge to Pavillon Judith-Jasmin.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Indoor Tunnel to Pavillon J & Metro', 0xf59e0b],
+                [1, '1F', 'Central Library & Saint-Denis Entrance', 0x7c3aed],
+                [2, '2F', 'Skybridge to Judith-Jasmin', 0x8b5cf6],
+                [3, '3F–6F', 'Social Sciences & Law Departments', 0x6d28d9]
+              ])
+            },
+            {
+              id: 'uqam_f', name: 'UQAM — Pavillon de Musique (F)', shortName: 'UQAM Musique (F)', category: 'mall', badge: 'UNIVERSITY · WEST PORTAL',
+              xM: -50, zM: -45, wM: 55, dM: 45, floorHM: 4.0, color: 0xec4899,
+              footprint: '55m × 45m', totalArea: '~14,000 m²', span: 'B1F – 5F',
+              desc: 'Connected to the western Saint-Denis access tunnel and elevator shaft.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Saint-Denis Metro Corridor & Elevator', 0xf59e0b],
+                [1, '1F', 'Salle Pierre-Mercure Concert Hall', 0xec4899],
+                [2, '2F–5F', 'Music Studios & Rehearsal Rooms', 0xf472b6]
+              ])
+            },
+            {
+              id: 'gare_autocars', name: 'Gare d’autocars de Montréal', shortName: 'Gare d’autocars', category: 'chikagai', badge: 'INTERCITY BUS TERMINAL',
+              xM: -45, zM: -135, wM: 65, dM: 65, floorHM: 4.2, color: 0xf59e0b,
+              footprint: '65m × 65m', totalArea: '~16,000 m²', span: 'B1F – 2F (Berri & Ontario)',
+              desc: 'Intercity coach terminal at Berri & Ontario connected via Berri North corridor.',
+              floors: makeFloors([
+                [-1, 'B1F', 'Underground Link to Berri-UQAM', 0xd97706],
+                [1, '1F', 'Intercity Bus Platforms & Waiting Hall', 0xf59e0b],
+                [2, '2F', 'Terminal Offices & Services', 0xfbbf24]
+              ])
+            },
+            {
+              id: 'berri_kiosk', name: 'Édicule Berri / Sainte-Catherine', shortName: 'Ste-Catherine Portal', category: 'chikagai', badge: 'SOUTH PORTAL · ACCESSIBLE',
+              xM: -35, zM: 120, wM: 45, dM: 35, floorHM: 3.8, color: 0xeab308,
+              footprint: '45m × 35m', totalArea: '~3,200 m²', span: 'B1F – 1F',
+              desc: 'Glass-and-steel pavilion at Berri & Sainte-Catherine with universal accessibility elevators.',
+              floors: makeFloors([
+                [-1, 'B1F', 'South Access Gallery & Elevator Lobby', 0xca8a04],
+                [1, '1F', 'Street Pavilion (Berri / Ste-Catherine)', 0xeab308]
+              ])
+            }
+          ],
+          tracks: [
+            { name: 'Orange Line (Line 2: Côte-Vertu ↔ Montmorency)', operator: 'STM Métro', elev: '-10.7m (B2)', color: 0xf97316, pts: [[0, -10.7, -260], [0, -10.7, 0], [0, -10.7, 260]] },
+            { name: 'Green Line (Line 1: Angrignon ↔ Honoré-Beaugrand)', operator: 'STM Métro', elev: '-16.8m (B3)', color: 0x10b981, pts: [[-260, -16.8, 0], [0, -16.8, 0], [260, -16.8, 0]] },
+            { name: 'Yellow Line (Line 4: Berri-UQAM ↔ Longueuil)', operator: 'STM Métro', elev: '-27.4m (B5)', color: 0xeab308, pts: [[-75, -27.4, -40], [-75, -27.4, 35], [-55, -28.5, 160], [-10, -30.0, 260]] }
+          ],
+          passages: [
+            { name: 'East Corridor: Mezzanine B1 ↔ Place Dupuis', pts: [[25, -5.5, -10], [45, -5.2, -35], [60, -4.2, -55]], r: 0.36, desc: 'Direct indoor corridor from B1 mezzanine into Place Dupuis B1F.' },
+            { name: 'Sunken Garden Tunnel: B1 ↔ Grande Bibliothèque (BAnQ)', pts: [[15, -5.5, -35], [38, -5.5, -90], [60, -5.5, -135]], r: 0.36, desc: 'Subterranean tunnel passing a sunken garden into Grande Bibliothèque.' },
+            { name: 'North Corridor: Mezzanine B1 ↔ Gare d’autocars', pts: [[-10, -5.5, -35], [-25, -5.2, -85], [-42, -4.2, -125]], r: 0.34, desc: 'Northern access corridor along Rue Berri toward Gare d’autocars.' },
+            { name: 'West Corridor: Mezzanine B1 ↔ Saint-Denis / UQAM (F)', pts: [[-45, -5.5, -10], [-65, -5.0, -30], [-55, -4.2, -45]], r: 0.34, desc: 'Western gallery over Green Line vault leading to Saint-Denis & UQAM F.' },
+            { name: 'South-West Portal: Mezzanine B1 ↔ UQAM Judith-Jasmin (J)', pts: [[-25, -5.5, 25], [-40, -4.8, 42], [-50, -4.2, 55]], r: 0.38, desc: 'Concourse opening directly into UQAM Judith-Jasmin B1F.' },
+            { name: 'South Corridor: Mezzanine B1 ↔ Édicule Sainte-Catherine', pts: [[-15, -5.5, 35], [-25, -5.2, 80], [-35, -4.2, 115]], r: 0.36, desc: 'Southern access corridor beneath Rue Berri to Sainte-Catherine pavilion.' },
+            { name: 'UQAM Indoor Tunnel: Judith-Jasmin (J) ↔ Hubert-Aquin (A)', pts: [[-75, -4.2, 55], [-105, -4.2, 55], [-130, -4.2, 55]], r: 0.32, desc: 'Subterranean university tunnel connecting Pavillons J and A.' },
+            { name: 'Green Line (B3) ↔ Yellow Line Transfer Gallery (B4)', pts: [[-35, -16.8, 5], [-45, -19.5, 12], [-55, -22.0, 18]], r: 0.34, desc: 'Deep rock-cut transfer corridor connecting Green Line to Yellow Line.' },
+            { name: 'Orange Line (B2) ↔ Green Line (B3) Direct Transfer', pts: [[12, -10.7, 12], [18, -13.8, 12], [12, -16.8, 12]], r: 0.32, desc: 'Direct platform interchange between Orange and Green lines.' },
+            { name: '1500 Rue Berri Portal Tunnel', pts: [[18, -5.5, -18], [24, -2.5, -22], [28, 0.2, -24]], r: 0.28, desc: 'Rue Berri entrance staircase descending into B1 mezzanine.' }
+          ],
+          skybridges: [
+            { name: 'UQAM 2F Skybridge (Judith-Jasmin J ↔ Hubert-Aquin A)', pts: [[-82, 6.2, 45], [-96, 6.2, 45], [-110, 6.2, 45]], r: 0.34, desc: '2nd-floor enclosed bridge spanning Rue Saint-Denis between UQAM J and A.' },
+            { name: 'Place Dupuis 2F Commercial Gallery Bridge', pts: [[35, 6.0, -45], [52, 6.0, -50], [65, 6.0, -55]], r: 0.30, desc: '2nd-level indoor commercial link inside Place Dupuis.' }
+          ],
+          escalators: [
+            { name: 'Deep Escalator: B4 Transfer ↔ B5 Yellow Line (-27.4m)', from: [-62, -22.0, 22], to: [-72, -27.4, 32] },
+            { name: 'Deep Escalator: B3 Green Line ↔ B4 Yellow Transfer', from: [-38, -16.8, 8], to: [-52, -22.0, 16] },
+            { name: 'Central Escalator: B1 Mezzanine ↔ B2 Orange Line', from: [-8, -5.5, -14], to: [-4, -10.7, -22] },
+            { name: 'Central Escalator: B2 Orange Line ↔ B3 Green Line', from: [8, -10.7, -8], to: [16, -16.8, -6] },
+            { name: 'De Maisonneuve Portal Escalator (Street ↔ B1)', from: [24, 0.2, 16], to: [14, -5.5, 10] },
+            { name: 'Place Dupuis B1F ↔ 1F Atrium Escalator', from: [65, -4.2, -55], to: [65, 0.2, -62] }
+          ],
+          stairwells: [
+            { name: 'B1 Cruciform Corner Stairs (NW → Orange Line B2)', x: -16, z: -12, yLow: -10.7, yHigh: -5.5 },
+            { name: 'B1 Cruciform Corner Stairs (SE → Orange Line B2)', x: 12, z: 14, yLow: -10.7, yHigh: -5.5 },
+            { name: 'Orange Line (B2) ↔ Green Line (B3) Interchange Stairs', x: -14, z: 8, yLow: -16.8, yHigh: -10.7 },
+            { name: 'Sainte-Catherine Pavilion Stairs (Street ↔ B1)', x: -35, z: 120, yLow: -5.5, yHigh: 0.2 },
+            { name: 'UQAM Judith-Jasmin B1F ↔ 1F Agora Stairs', x: -50, z: 55, yLow: -4.2, yHigh: 0.2 }
+          ],
+          elevators: [
+            { name: 'STM Universal Lift: Sainte-Catherine Street ↔ B1', x: -30, z: 118, yMin: -5.5, yMax: 0.5 },
+            { name: 'STM Universal Lift: B1 Mezzanine ↔ Orange Line (B2)', x: 10, z: -18, yMin: -10.7, yMax: -5.5 },
+            { name: 'STM Universal Lift: B1 Mezzanine ↔ Green Line (B3)', x: 22, z: -6, yMin: -16.8, yMax: -5.5 },
+            { name: 'Saint-Denis Portal Lift (Street ↔ B1)', x: -68, z: -32, yMin: -5.5, yMax: 0.5 },
+            { name: 'Grande Bibliothèque (BAnQ) Lift (B2 ↔ 4F)', x: 65, z: -145, yMin: -6.0, yMax: 16.0 }
+          ],
+          routeNodes: [
+            { id: 'orange_b2', name: 'Orange Line Platforms (B2 · -10.7m)', xM: 0, yM: -10.7, zM: 0 },
+            { id: 'green_b3', name: 'Green Line Platforms (B3 · -16.8m)', xM: 0, yM: -16.8, zM: 0 },
+            { id: 'yellow_b5', name: 'Yellow Line Terminus (B5 · -27.4m)', xM: -75, yM: -27.4, zM: 35 },
+            { id: 'mezzanine_b1', name: 'B1 Cruciform Mezzanine ("La Puck" · -5.5m)', xM: -10, yM: -5.5, zM: 0 },
+            { id: 'banq', name: 'Grande Bibliothèque (BAnQ B1/1F)', xM: 65, yM: -4.2, zM: -145 },
+            { id: 'place_dupuis', name: 'Place Dupuis Food Court (B1F)', xM: 65, yM: -4.2, zM: -55 },
+            { id: 'uqam_j', name: 'UQAM Pavillon Judith-Jasmin (B1F)', xM: -50, yM: -4.2, zM: 55 },
+            { id: 'gare_autocars', name: 'Gare d’autocars de Montréal (1F)', xM: -45, yM: 0.2, zM: -135 }
+          ],
+          defaultFromIdx: 0,
+          defaultToIdx: 2
+        }
+      };
+
+      // Bottom Sheet & Tabs
+      const sheet = document.getElementById('bottom-sheet');
+      const handle = document.getElementById('sheet-handle');
+      const expandBtn = document.getElementById('expand-toggle-btn');
+
+      function openSheetTab(tabName) {
+        sheet.classList.remove('collapsed');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tabName));
+      }
+
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => openSheetTab(btn.dataset.tab));
+      });
+      handle.addEventListener('click', () => sheet.classList.toggle('collapsed'));
+      expandBtn.addEventListener('click', () => sheet.classList.toggle('collapsed'));
+
+      let touchStartY = 0;
+      handle.addEventListener('touchstart', (e) => { touchStartY = e.touches[0].clientY; }, { passive: true });
+      handle.addEventListener('touchend', (e) => {
+        const dy = e.changedTouches[0].clientY - touchStartY;
+        if (dy > 25) sheet.classList.add('collapsed');
+        else if (dy < -25) sheet.classList.remove('collapsed');
+      }, { passive: true });
+
+      // Three.js Renderer, Scene & Controls
+      const container = document.getElementById('canvas-container');
+      const labelsLayer = document.getElementById('labels-layer');
+
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+      } catch (err) {
+        showError('WebGL unavailable: ' + err.message);
+        return;
+      }
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x060a12, 1);
+      container.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x060a12, 0.0020);
+
+      const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.5, 1000);
+      camera.position.set(...SHARED_CAMERAS.iso.pos);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.target.set(...SHARED_CAMERAS.iso.target);
+      controls.maxDistance = 320;
+      controls.minDistance = 4;
+      controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+      const dirLight = new THREE.DirectionalLight(0xe0f2fe, 0.85);
+      dirLight.position.set(60, 120, 50);
+      scene.add(dirLight);
+
+      // Persistent Grid + Dynamic Hub Group
+      const gridGroup = new THREE.Group();
+      const hubRootGroup = new THREE.Group();
+      scene.add(gridGroup, hubRootGroup);
+
+      let groundGroup, railGroup, mallGroup, chikagaiGroup;
+      let circulationGroup, trackGroup, tunnelGroup, skybridgeGroup, escalatorGroup, stairGroup, elevatorGroup;
+      let routeGroup;
+
+      let blockMaterials = [];
+      let groundMaterials = [];
+      let floorMeshes = [];
+      let stationNodes = [];
+      let interactiveTargets = [];
+      let floatingPins = [];
+      let explodedCirculationItems = [];
+      let escalatorSteps = [];
+      let elevatorCabins = [];
+      let highlightedFloor = null;
+      let currentRouteCurve = null;
+      let routePulseMesh = null;
+      let activeHubId = 'umeda';
+
+      const gridHelper = new THREE.GridHelper(120, 24, 0x38bdf8, 0x1e293b);
+      gridHelper.position.y = 0.02;
+      gridHelper.material.transparent = true;
+      gridHelper.material.opacity = 0.42;
+      gridGroup.add(gridHelper);
+
+      const majorGrid = new THREE.GridHelper(100, 4, 0x38bdf8, 0x334155);
+      majorGrid.position.y = 0.04;
+      majorGrid.material.transparent = true;
+      majorGrid.material.opacity = 0.55;
+      gridGroup.add(majorGrid);
+
+      const explodeSlider = document.getElementById('explode-slider');
+      const blockOpacitySlider = document.getElementById('block-opacity-slider');
+      const groundOpacitySlider = document.getElementById('ground-opacity-slider');
+      const routeFromSel = document.getElementById('route-from');
+      const routeToSel = document.getElementById('route-to');
+
+      // Rebuilds or repositions circulation segments without distorting tube cross-sections or angles
+      function addExplodableTube(parentGroup, rawPts, radius, radialSegs, color, emissive, emissiveIntensity, userData) {
+        const basePts = rawPts.map(([x, y, z]) => new THREE.Vector3(m(x), m(y), m(z)));
+        const curve = new THREE.CatmullRomCurve3(basePts);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 32, radius, radialSegs, false),
+          new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity })
+        );
+        mesh.userData = userData;
+        interactiveTargets.push(mesh);
+        parentGroup.add(mesh);
+
+        explodedCirculationItems.push({
+          kind: 'tube',
+          mesh,
+          basePts,
+          radius,
+          radialSegs
+        });
+      }
+
+      function addExplodableSegment(parentGroup, pStartBase, pEndBase, width, height, color, emissive, emissiveIntensity, userData) {
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(width, height, 1),
+          new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity })
+        );
+        mesh.userData = userData;
+        interactiveTargets.push(mesh);
+        parentGroup.add(mesh);
+
+        explodedCirculationItems.push({
+          kind: 'segment',
+          mesh,
+          pStartBase,
+          pEndBase
+        });
+      }
+
+      function addExplodableShaft(parentGroup, x, z, yMinBase, yMaxBase, userData) {
+        const shaftGeo = new THREE.BoxGeometry(0.72, 1, 0.72);
+        const shaftMat = new THREE.MeshStandardMaterial({ color: 0x34d399, transparent: true, opacity: 0.28, depthWrite: false });
+        const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(0.72, 1, 0.72)),
+          new THREE.LineBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.8 })
+        );
+        shaft.add(edges);
+        shaft.position.set(x, 0, z);
+        shaft.userData = userData;
+        interactiveTargets.push(shaft);
+        parentGroup.add(shaft);
+
+        explodedCirculationItems.push({
+          kind: 'shaft',
+          mesh: shaft,
+          yMinBase,
+          yMaxBase
+        });
+      }
+
+      function addFloatingPin(text, category, x, y, z, onClickFn) {
+        const div = document.createElement('div');
+        div.className = `pin-label ${category}`;
+        div.textContent = text;
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onClickFn();
+        });
+        labelsLayer.appendChild(div);
+        floatingPins.push({ div, basePos: new THREE.Vector3(x, y, z), category });
+      }
+
+      function clearFloorHighlight() {
+        if (highlightedFloor) {
+          highlightedFloor.mat.color.copy(highlightedFloor.origColor);
+          highlightedFloor.mat.emissive.setHex(0x000000);
+          highlightedFloor = null;
+        }
+        document.querySelectorAll('.floor-row').forEach(el => el.classList.remove('highlighted'));
+      }
+
+      function highlightFloorRecord(fr) {
+        clearFloorHighlight();
+        if (!fr) return;
+        highlightedFloor = fr;
+        fr.mat.color.setHex(0x38bdf8);
+        fr.mat.emissive.setHex(0x0284c7);
+        const row = document.querySelector(`.floor-row[data-code="${fr.code}"]`);
+        if (row) row.classList.add('highlighted');
+      }
+
+      function setOverviewInspector(cfgHub) {
+        clearFloorHighlight();
+        document.getElementById('floor-stack-section').style.display = 'none';
+        document.getElementById('inspector-badge').textContent = cfgHub.overview.badge;
+        document.getElementById('inspector-title').textContent = cfgHub.overview.title;
+        document.getElementById('inspector-sub').textContent = cfgHub.overview.sub;
+        document.getElementById('inspector-desc').textContent = cfgHub.overview.desc;
+        document.getElementById('inspector-stats').innerHTML = cfgHub.overview.stats.map(([k, v]) => `
+          <div class="stat-box"><div class="stat-label">${k}</div><div class="stat-value">${v}</div></div>
+        `).join('');
+      }
+
+      function inspectBuilding(cfg, selectedFloor = null) {
+        openSheetTab('inspect');
+        document.getElementById('inspector-badge').textContent = cfg.badge;
+        document.getElementById('inspector-title').textContent = cfg.name;
+        document.getElementById('inspector-sub').textContent = cfg.span;
+        document.getElementById('inspector-desc').textContent = cfg.desc;
+        document.getElementById('inspector-stats').innerHTML = `
+          <div class="stat-box"><div class="stat-label">Footprint</div><div class="stat-value">${cfg.footprint}</div></div>
+          <div class="stat-box"><div class="stat-label">Total Area</div><div class="stat-value">${cfg.totalArea}</div></div>
+        `;
+        const sec = document.getElementById('floor-stack-section');
+        const list = document.getElementById('floor-stack-list');
+        sec.style.display = 'block';
+        list.innerHTML = '';
+        [...cfg.floorRecords].reverse().forEach((fr) => {
+          const row = document.createElement('div');
+          row.className = 'floor-row' + (fr.level < 1 ? ' sub' : '');
+          row.dataset.code = fr.code;
+          row.innerHTML = `<span class="floor-code">${fr.code}</span><span class="floor-desc">${fr.desc}</span>`;
+          row.addEventListener('click', () => highlightFloorRecord(fr));
+          list.appendChild(row);
+        });
+        if (selectedFloor) highlightFloorRecord(selectedFloor);
+        else clearFloorHighlight();
+      }
+
+      function inspectStation(st) {
+        openSheetTab('inspect');
+        clearFloorHighlight();
+        document.getElementById('floor-stack-section').style.display = 'none';
+        document.getElementById('inspector-badge').textContent = `${st.operator.toUpperCase()} · LEVEL`;
+        document.getElementById('inspector-title').textContent = st.name;
+        document.getElementById('inspector-sub').textContent = `Elev: ${st.levelY > 0 ? '+' : ''}${st.levelY}m`;
+        document.getElementById('inspector-desc').textContent = st.desc;
+        document.getElementById('inspector-stats').innerHTML = `
+          <div class="stat-box"><div class="stat-label">Service / Volume</div><div class="stat-value">${st.passengers}</div></div>
+          <div class="stat-box"><div class="stat-label">Configuration</div><div class="stat-value">${st.platforms}</div></div>
+        `;
+      }
+
+      function inspectCirculation(info) {
+        openSheetTab('inspect');
+        clearFloorHighlight();
+        document.getElementById('floor-stack-section').style.display = 'none';
+        document.getElementById('inspector-badge').textContent = info.badge;
+        document.getElementById('inspector-title').textContent = info.title;
+        document.getElementById('inspector-sub').textContent = info.subtitle;
+        document.getElementById('inspector-desc').textContent = info.desc;
+        document.getElementById('inspector-stats').innerHTML = info.stats.map(([k, v]) => `
+          <div class="stat-box"><div class="stat-label">${k}</div><div class="stat-value">${v}</div></div>
+        `).join('');
+      }
+
+      function updateRoute() {
+        if (!routeGroup) return;
+        while (routeGroup.children.length > 0) routeGroup.remove(routeGroup.children[0]);
+        const cfgHub = HUB_DATA[activeHubId];
+        const fromNd = cfgHub.routeNodes.find(s => s.id === routeFromSel.value);
+        const toNd = cfgHub.routeNodes.find(s => s.id === routeToSel.value);
+        if (!fromNd || !toNd || fromNd.id === toNd.id) {
+          document.getElementById('route-summary').textContent = 'Select two different stations or levels to simulate a transfer.';
+          currentRouteCurve = null;
+          return;
+        }
+        const explode = parseFloat(explodeSlider.value);
+        const p1 = new THREE.Vector3(m(fromNd.xM), m(fromNd.yM) * explode, m(fromNd.zM));
+        const p4 = new THREE.Vector3(m(toNd.xM), m(toNd.yM) * explode, m(toNd.zM));
+
+        const midY = activeHubId === 'berri'
+          ? ((fromNd.id === 'yellow_b5' || toNd.id === 'yellow_b5') ? m(-16.8) * explode : m(-5.5) * explode)
+          : ((p1.y > 0 && p4.y > 0) ? 0.35 * explode : -0.48 * explode);
+
+        const p2 = new THREE.Vector3(p1.x * 0.65 + p4.x * 0.35, midY, p1.z * 0.65 + p4.z * 0.35);
+        const p3 = new THREE.Vector3(p1.x * 0.35 + p4.x * 0.65, midY, p1.z * 0.35 + p4.z * 0.65);
+
+        currentRouteCurve = new THREE.CatmullRomCurve3([p1, p2, p3, p4]);
+        routeGroup.add(new THREE.Mesh(
+          new THREE.TubeGeometry(currentRouteCurve, 36, 0.24, 8, false),
+          new THREE.MeshBasicMaterial({ color: 0xfef08a })
+        ));
+        routePulseMesh = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        routeGroup.add(routePulseMesh);
+
+        const horiz = Math.hypot(fromNd.xM - toNd.xM, fromNd.zM - toNd.zM);
+        const vert = Math.abs(fromNd.yM - toNd.yM);
+        const walkM = Math.round(horiz * 1.15 + vert * 2.2);
+        const mins = Math.max(1, Math.round(walkM / 65));
+        document.getElementById('route-summary').innerHTML =
+          `<strong style="color:#fef08a;">~${walkM}m walk · ~${mins} min</strong><br/>` +
+          `Elevation Δ: ${fromNd.yM > 0 ? '+' : ''}${fromNd.yM}m → ${toNd.yM > 0 ? '+' : ''}${toNd.yM}m`;
+      }
+
+      const _pA = new THREE.Vector3();
+      const _pB = new THREE.Vector3();
+      const _mid = new THREE.Vector3();
+
+      function applyExplodeFactor(factor) {
+        floorMeshes.forEach(fm => { fm.mesh.position.y = fm.baseY * factor; });
+        stationNodes.forEach(sn => { sn.mesh.position.y = sn.baseY * factor; });
+
+        explodedCirculationItems.forEach(item => {
+          if (item.kind === 'tube') {
+            const shiftedPts = item.basePts.map(pt => new THREE.Vector3(pt.x, pt.y * factor, pt.z));
+            const nextGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(shiftedPts), 32, item.radius, item.radialSegs, false);
+            item.mesh.geometry.dispose();
+            item.mesh.geometry = nextGeo;
+          } else if (item.kind === 'segment') {
+            _pA.set(item.pStartBase.x, item.pStartBase.y * factor, item.pStartBase.z);
+            _pB.set(item.pEndBase.x, item.pEndBase.y * factor, item.pEndBase.z);
+            _mid.addVectors(_pA, _pB).multiplyScalar(0.5);
+            const len = Math.max(_pA.distanceTo(_pB), 0.35);
+            item.mesh.scale.set(1, 1, len);
+            item.mesh.position.copy(_mid);
+            item.mesh.lookAt(_pB);
+          } else if (item.kind === 'shaft') {
+            const y0 = item.yMinBase * factor;
+            const y1 = item.yMaxBase * factor;
+            const h = Math.max(y1 - y0, 0.35);
+            item.mesh.scale.set(1, h, 1);
+            item.mesh.position.y = y0 + h * 0.5;
+          }
+        });
+
+        floatingPins.forEach(pin => { pin.currentY = pin.basePos.y * factor; });
+        updateRoute();
+      }
+
+      function applyOpacities() {
+        const blockAlpha = parseInt(blockOpacitySlider.value, 10) / 100;
+        const groundAlpha = parseInt(groundOpacitySlider.value, 10) / 100;
+
+        blockMaterials.forEach(entry => {
+          entry.mat.opacity = blockAlpha * entry.baseOpacity;
+          if (!entry.isEdge) entry.mat.depthWrite = blockAlpha > 0.65;
+          entry.mat.visible = blockAlpha > 0.01;
+        });
+
+        groundMaterials.forEach(entry => {
+          entry.mat.opacity = groundAlpha * entry.baseOpacity;
+          entry.mat.visible = groundAlpha > 0.01;
+        });
+      }
+
+      function applyCameraPreset(presetKey) {
+        document.querySelectorAll('.cam-pill[data-cam]').forEach(b => b.classList.toggle('active', b.dataset.cam === presetKey));
+        const p = SHARED_CAMERAS[presetKey] || SHARED_CAMERAS.iso;
+        camera.position.set(...p.pos);
+        controls.target.set(...p.target);
+        controls.update();
+      }
+
+      function loadHub(hubId) {
+        activeHubId = hubId;
+        const cfgHub = HUB_DATA[hubId];
+
+        document.getElementById('hub-title').textContent = cfgHub.title;
+        document.getElementById('hub-subtitle').textContent = cfgHub.subtitle;
+        document.getElementById('layer-rail-label').textContent = cfgHub.railLabel;
+        document.getElementById('layer-malls-label').textContent = cfgHub.mallsLabel;
+        document.getElementById('layer-chikagai-label').textContent = cfgHub.chikagaiLabel;
+        document.querySelectorAll('.hub-btn').forEach(b => b.classList.toggle('active', b.dataset.hub === hubId));
+
+        while (hubRootGroup.children.length > 0) hubRootGroup.remove(hubRootGroup.children[0]);
+        labelsLayer.innerHTML = '';
+        blockMaterials = [];
+        groundMaterials = [];
+        floorMeshes = [];
+        stationNodes = [];
+        interactiveTargets = [];
+        floatingPins = [];
+        explodedCirculationItems = [];
+        escalatorSteps = [];
+        elevatorCabins = [];
+        highlightedFloor = null;
+        currentRouteCurve = null;
+        routePulseMesh = null;
+
+        groundGroup = new THREE.Group();
+        railGroup = new THREE.Group();
+        mallGroup = new THREE.Group();
+        chikagaiGroup = new THREE.Group();
+        circulationGroup = new THREE.Group();
+        trackGroup = new THREE.Group();
+        tunnelGroup = new THREE.Group();
+        skybridgeGroup = new THREE.Group();
+        escalatorGroup = new THREE.Group();
+        stairGroup = new THREE.Group();
+        elevatorGroup = new THREE.Group();
+        routeGroup = new THREE.Group();
+
+        circulationGroup.add(trackGroup, tunnelGroup, skybridgeGroup, escalatorGroup, stairGroup, elevatorGroup);
+        hubRootGroup.add(groundGroup, railGroup, mallGroup, chikagaiGroup, circulationGroup, routeGroup);
+
+        const groundMat = new THREE.MeshStandardMaterial({
+          color: 0x0f172a, transparent: true, opacity: 0.42,
+          roughness: 0.9, side: THREE.DoubleSide, depthWrite: false
+        });
+        const groundPlane = new THREE.Mesh(new THREE.PlaneGeometry(130, 130), groundMat);
+        groundPlane.rotation.x = -Math.PI / 2;
+        groundGroup.add(groundPlane);
+        groundMaterials.push({ mat: groundMat, baseOpacity: 1.0 });
+
+        cfgHub.streets.forEach(([xM, zM, wM, dM, color]) => {
+          const mat = new THREE.MeshBasicMaterial({
+            color, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false
+          });
+          const mesh = new THREE.Mesh(new THREE.PlaneGeometry(m(wM), m(dM)), mat);
+          mesh.rotation.x = -Math.PI / 2;
+          mesh.position.set(m(xM), 0.03, m(zM));
+          groundGroup.add(mesh);
+          groundMaterials.push({ mat, baseOpacity: 1.0 });
+        });
+
+        cfgHub.stations.forEach((st) => {
+          const geo = new THREE.BoxGeometry(m(st.wM), 0.55, m(st.dM));
+          const mat = new THREE.MeshStandardMaterial({
+            color: st.color, emissive: st.color, emissiveIntensity: 0.3, transparent: true, opacity: 0.88
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(m(st.xM), m(st.levelY), m(st.zM));
+          mesh.add(new THREE.LineSegments(
+            new THREE.EdgesGeometry(geo),
+            new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 })
+          ));
+          const beacon = new THREE.Mesh(
+            new THREE.SphereGeometry(0.68, 12, 12),
+            new THREE.MeshBasicMaterial({ color: 0xffffff })
+          );
+          beacon.position.set(0, 0.55, 0);
+          mesh.add(beacon);
+
+          stationNodes.push({ mesh, baseY: m(st.levelY), st });
+          mesh.userData = { type: 'station', st };
+          interactiveTargets.push(mesh);
+          railGroup.add(mesh);
+
+          addFloatingPin(st.name, 'rail', m(st.xM), m(st.levelY) + 0.85, m(st.zM), () => inspectStation(st));
+        });
+
+        cfgHub.buildings.forEach((cfg) => {
+          const group = new THREE.Group();
+          const x = m(cfg.xM), z = m(cfg.zM), w = m(cfg.wM), d = m(cfg.dM);
+          const floorH = m(cfg.floorHM || 4.2);
+          const buildingFloors = [];
+
+          cfg.floors.forEach((fl) => {
+            const baseY = fl.level >= 1 ? (fl.level - 1) * floorH : fl.level * floorH;
+            const slabH = floorH * 0.86;
+            const geo = new THREE.BoxGeometry(w, slabH, d);
+            const colorHex = fl.color || cfg.color;
+
+            const mat = new THREE.MeshStandardMaterial({
+              color: colorHex, transparent: true, opacity: 0.48,
+              roughness: 0.45, depthWrite: false
+            });
+            blockMaterials.push({ mat, baseOpacity: 1.0, isEdge: false });
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, baseY + slabH / 2, z);
+
+            const edgeMat = new THREE.LineBasicMaterial({
+              color: 0xffffff, transparent: true, opacity: 0.16
+            });
+            blockMaterials.push({ mat: edgeMat, baseOpacity: 0.32, isEdge: true });
+            mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+
+            const floorRecord = {
+              mesh, mat, baseY: baseY + slabH / 2, level: fl.level,
+              code: fl.code, desc: fl.desc, origColor: new THREE.Color(colorHex), buildingCfg: cfg
+            };
+            floorMeshes.push(floorRecord);
+            buildingFloors.push(floorRecord);
+
+            mesh.userData = { type: 'floor', floorRecord, cfg };
+            interactiveTargets.push(mesh);
+            group.add(mesh);
+          });
+
+          cfg.floorRecords = buildingFloors;
+          const topFloor = buildingFloors[buildingFloors.length - 1];
+          if (topFloor) {
+            addFloatingPin(cfg.shortName || cfg.name, cfg.category, x, topFloor.baseY + floorH, z, () => inspectBuilding(cfg));
+          }
+
+          if (cfg.category === 'chikagai') chikagaiGroup.add(group);
+          else mallGroup.add(group);
+        });
+
+        cfgHub.tracks.forEach((tr) => {
+          addExplodableTube(trackGroup, tr.pts, 0.22, 6, tr.color, tr.color, 0.45, {
+            type: 'circ', badge: 'RAIL / MÉTRO LINE', title: tr.name,
+            subtitle: `${tr.operator} · ${tr.elev}`,
+            desc: 'Continuous rail / subway line running through the hub.',
+            stats: [['Operator', tr.operator], ['Elevation', tr.elev]]
+          });
+        });
+
+        cfgHub.passages.forEach((p) => {
+          addExplodableTube(tunnelGroup, p.pts, p.r, 8, 0x22d3ee, 0x0891b2, 0.38, {
+            type: 'circ', badge: 'UNDERGROUND PASSAGE', title: p.name,
+            subtitle: 'Subterranean Pedestrian Corridor', desc: p.desc,
+            stats: [['Type', 'Underground Passage'], ['Elevation', `${p.pts[0][1]}m`]]
+          });
+        });
+
+        cfgHub.skybridges.forEach((sb) => {
+          addExplodableTube(skybridgeGroup, sb.pts, sb.r, 6, 0x818cf8, 0x4f46e5, 0.4, {
+            type: 'circ', badge: 'ELEVATED SKYBRIDGE', title: sb.name,
+            subtitle: 'Elevated Pedestrian Deck', desc: sb.desc,
+            stats: [['Type', 'Skybridge'], ['Deck Elev.', `${sb.pts[0][1]}m`]]
+          });
+        });
+
+        cfgHub.escalators.forEach((esc) => {
+          const pStartBase = new THREE.Vector3(m(esc.from[0]), m(esc.from[1]), m(esc.from[2]));
+          const pEndBase = new THREE.Vector3(m(esc.to[0]), m(esc.to[1]), m(esc.to[2]));
+          addExplodableSegment(escalatorGroup, pStartBase, pEndBase, 0.42, 0.15, 0xf472b6, 0xdb2777, 0.35, {
+            type: 'circ', badge: 'ESCALATOR BANK', title: esc.name,
+            subtitle: 'Inclined Escalator Link', desc: 'Multi-tier escalator bank connecting station and concourse levels.',
+            stats: [['Start', `${esc.from[1]}m`], ['End', `${esc.to[1]}m`]]
+          });
+
+          const stepMesh = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.24), new THREE.MeshBasicMaterial({ color: 0xfce7f3 }));
+          escalatorGroup.add(stepMesh);
+          escalatorSteps.push({ mesh: stepMesh, pStartBase, pEndBase, phase: Math.random() });
+        });
+
+        cfgHub.stairwells.forEach((sw) => {
+          const flights = 4;
+          const dy = (m(sw.yHigh) - m(sw.yLow)) / flights;
+          for (let i = 0; i < flights; i++) {
+            const y0 = m(sw.yLow) + i * dy;
+            const pABase = new THREE.Vector3(m(sw.x) + (i % 2 === 0 ? -0.4 : 0.4), y0, m(sw.z));
+            const pBBase = new THREE.Vector3(m(sw.x) + (i % 2 === 0 ? 0.4 : -0.4), y0 + dy, m(sw.z));
+            addExplodableSegment(stairGroup, pABase, pBBase, 0.36, 0.13, 0xfacc15, 0xca8a04, 0.3, {
+              type: 'circ', badge: 'STAIRWELL FLIGHT', title: sw.name,
+              subtitle: `Flight ${i + 1} of ${flights}`, desc: 'Stepped pedestrian stairwell linking adjacent tiers.',
+              stats: [['Span', `${sw.yLow}m to ${sw.yHigh}m`], ['Flights', `${flights}`]]
+            });
+          }
+        });
+
+        cfgHub.elevators.forEach((el, idx) => {
+          const yMinBase = m(el.yMin);
+          const yMaxBase = m(el.yMax);
+          const xU = m(el.x);
+          const zU = m(el.z);
+          const infoData = {
+            type: 'circ', badge: 'ELEVATOR SHAFT', title: el.name,
+            subtitle: 'Barrier-Free Vertical Lift', desc: 'Vertical elevator shaft linking subterranean and upper levels.',
+            stats: [['Min', `${el.yMin}m`], ['Max', `${el.yMax}m`]]
+          };
+          addExplodableShaft(elevatorGroup, xU, zU, yMinBase, yMaxBase, infoData);
+
+          const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 0.6), new THREE.MeshBasicMaterial({ color: 0xa7f3d0 }));
+          cabin.position.set(xU, yMinBase + 0.25, zU);
+          cabin.userData = infoData;
+          interactiveTargets.push(cabin);
+          elevatorGroup.add(cabin);
+
+          elevatorCabins.push({
+            mesh: cabin, x: xU, z: zU,
+            yMinBase, yMaxBase: Math.max(yMaxBase - 0.45, yMinBase + 0.2),
+            speed: 0.18 + idx * 0.035, phase: idx * 0.65
+          });
+        });
+
+        railGroup.visible = document.getElementById('toggle-rail').checked;
+        mallGroup.visible = document.getElementById('toggle-malls').checked;
+        chikagaiGroup.visible = document.getElementById('toggle-chikagai').checked;
+        circulationGroup.visible = document.getElementById('toggle-circulation').checked;
+        trackGroup.visible = document.getElementById('toggle-tracks').checked;
+        tunnelGroup.visible = document.getElementById('toggle-tunnels').checked;
+        skybridgeGroup.visible = document.getElementById('toggle-skybridges').checked;
+        escalatorGroup.visible = document.getElementById('toggle-escalators').checked;
+        stairGroup.visible = document.getElementById('toggle-stairs').checked;
+        elevatorGroup.visible = document.getElementById('toggle-elevators').checked;
+
+        routeFromSel.innerHTML = '';
+        routeToSel.innerHTML = '';
+        cfgHub.routeNodes.forEach((nd, idx) => {
+          const o1 = new Option(nd.name, nd.id);
+          const o2 = new Option(nd.name, nd.id);
+          routeFromSel.add(o1);
+          routeToSel.add(o2);
+          if (idx === cfgHub.defaultFromIdx) o1.selected = true;
+          if (idx === cfgHub.defaultToIdx) o2.selected = true;
+        });
+
+        setOverviewInspector(cfgHub);
+        applyExplodeFactor(parseFloat(explodeSlider.value));
+        applyOpacities();
+      }
+
+      document.querySelectorAll('.hub-btn').forEach((btn) => {
+        btn.addEventListener('click', () => loadHub(btn.dataset.hub));
+      });
+
+      document.querySelectorAll('.cam-pill[data-cam]').forEach((btn) => {
+        btn.addEventListener('click', () => applyCameraPreset(btn.dataset.cam));
+      });
+
+      explodeSlider.addEventListener('input', () => {
+        const factor = parseFloat(explodeSlider.value);
+        document.getElementById('explode-val').textContent = factor.toFixed(1) + '×';
+        applyExplodeFactor(factor);
+      });
+
+      blockOpacitySlider.addEventListener('input', (e) => {
+        document.getElementById('block-opacity-val').textContent = parseInt(e.target.value, 10) + '%';
+        applyOpacities();
+      });
+
+      groundOpacitySlider.addEventListener('input', (e) => {
+        document.getElementById('ground-opacity-val').textContent = parseInt(e.target.value, 10) + '%';
+        applyOpacities();
+      });
+
+      routeFromSel.addEventListener('change', updateRoute);
+      routeToSel.addEventListener('change', updateRoute);
+
+      document.getElementById('toggle-rail').addEventListener('change', e => { railGroup.visible = e.target.checked; });
+      document.getElementById('toggle-malls').addEventListener('change', e => { mallGroup.visible = e.target.checked; });
+      document.getElementById('toggle-chikagai').addEventListener('change', e => { chikagaiGroup.visible = e.target.checked; });
+      document.getElementById('toggle-circulation').addEventListener('change', e => { circulationGroup.visible = e.target.checked; });
+      document.getElementById('toggle-tracks').addEventListener('change', e => { trackGroup.visible = e.target.checked; });
+      document.getElementById('toggle-tunnels').addEventListener('change', e => { tunnelGroup.visible = e.target.checked; });
+      document.getElementById('toggle-skybridges').addEventListener('change', e => { skybridgeGroup.visible = e.target.checked; });
+      document.getElementById('toggle-escalators').addEventListener('change', e => { escalatorGroup.visible = e.target.checked; });
+      document.getElementById('toggle-stairs').addEventListener('change', e => { stairGroup.visible = e.target.checked; });
+      document.getElementById('toggle-elevators').addEventListener('change', e => { elevatorGroup.visible = e.target.checked; });
+      document.getElementById('toggle-grid').addEventListener('change', e => { gridGroup.visible = e.target.checked; });
+      document.getElementById('toggle-labels').addEventListener('change', e => { labelsLayer.style.display = e.target.checked ? 'block' : 'none'; });
+
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let downPos = { x: 0, y: 0 }, downTime = 0;
+
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        downPos = { x: e.clientX, y: e.clientY };
+        downTime = performance.now();
+      });
+
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 8) return;
+        if (performance.now() - downTime > 450) return;
+
+        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+
+        const hits = raycaster.intersectObjects(interactiveTargets, false);
+        for (const hit of hits) {
+          const obj = hit.object;
+          if (!obj.visible) continue;
+          let p = obj.parent, hidden = false;
+          while (p) { if (!p.visible) { hidden = true; break; } p = p.parent; }
+          if (hidden) continue;
+          if (obj.material && obj.material.opacity < 0.05) continue;
+
+          if (obj.userData.type === 'station') { inspectStation(obj.userData.st); break; }
+          else if (obj.userData.type === 'floor') { inspectBuilding(obj.userData.cfg, obj.userData.floorRecord); break; }
+          else if (obj.userData.type === 'circ') { inspectCirculation(obj.userData); break; }
+        }
+      });
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      loadHub('umeda');
+      applyCameraPreset('iso');
+
+      const tempV = new THREE.Vector3();
+      let clock = 0;
+
+      function animate() {
+        requestAnimationFrame(animate);
+        clock += 0.004;
+        controls.update();
+
+        const explode = parseFloat(explodeSlider.value);
+
+        if (currentRouteCurve && routePulseMesh) {
+          currentRouteCurve.getPointAt(clock % 1, routePulseMesh.position);
+        }
+
+        for (let i = 0; i < escalatorSteps.length; i++) {
+          const es = escalatorSteps[i];
+          const t = (clock * 1.4 + es.phase) % 1;
+          es.mesh.position.set(
+            THREE.MathUtils.lerp(es.pStartBase.x, es.pEndBase.x, t),
+            THREE.MathUtils.lerp(es.pStartBase.y * explode, es.pEndBase.y * explode, t),
+            THREE.MathUtils.lerp(es.pStartBase.z, es.pEndBase.z, t)
+          );
+        }
+
+        for (let i = 0; i < elevatorCabins.length; i++) {
+          const ev = elevatorCabins[i];
+          const wave = 0.5 + 0.5 * Math.sin(clock * 4.0 * ev.speed + ev.phase);
+          ev.mesh.position.set(
+            ev.x,
+            THREE.MathUtils.lerp(ev.yMinBase * explode, ev.yMaxBase * explode, wave),
+            ev.z
+          );
+        }
+
+        if (labelsLayer.style.display !== 'none') {
+          const w = window.innerWidth, h = window.innerHeight;
+          for (let i = 0; i < floatingPins.length; i++) {
+            const pin = floatingPins[i];
+            const visible =
+              (pin.category === 'rail' && railGroup && railGroup.visible) ||
+              (pin.category === 'mall' && mallGroup && mallGroup.visible) ||
+              (pin.category === 'chikagai' && chikagaiGroup && chikagaiGroup.visible);
+
+            if (!visible) { pin.div.style.display = 'none'; continue; }
+            tempV.set(pin.basePos.x, pin.currentY !== undefined ? pin.currentY : pin.basePos.y, pin.basePos.z);
+            tempV.project(camera);
+            if (tempV.z > 1) { pin.div.style.display = 'none'; }
+            else {
+              pin.div.style.display = 'block';
+              pin.div.style.left = ((tempV.x * 0.5 + 0.5) * w) + 'px';
+              pin.div.style.top = ((-tempV.y * 0.5 + 0.5) * h) + 'px';
+            }
+          }
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
